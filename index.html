@@ -97,7 +97,7 @@
   <main class="app">
     <div class="brand">
       <h1>MG RESALE</h1>
-      <p>Voice Mode</p>
+      <p>Voice Mode — V6</p>
     </div>
 
     <section class="card">
@@ -114,7 +114,7 @@
       <div id="transcript" class="transcript">No speech captured yet.</div>
 
       <div class="buttons">
-        <button id="startBtn" class="start" type="button" onclick="startListening()">🎙️ Start Voice</button>
+        <button id="startBtn" class="start" type="button" onclick="startVoiceSession()">🎙️ Start Voice</button>
         <button id="stopBtn" class="stop" type="button" onclick="stopListening()" disabled>⏹ Stop</button>
         <button id="resetBtn" class="reset" type="button" onclick="resetVoice()">↺ Reset</button>
       </div>
@@ -129,6 +129,7 @@
   </main>
 
   
+  
   <script>
     let recognition = null;
     let isListening = false;
@@ -138,6 +139,9 @@
     let questionText = '';
     let restartTimer = null;
     let permissionStream = null;
+    let voiceEnabled = false;
+    let silenceTimer = null;
+    const SILENCE_MS = 1800;
 
     function $(id) { return document.getElementById(id); }
 
@@ -163,11 +167,21 @@
       return window.SpeechRecognition || window.webkitSpeechRecognition || null;
     }
 
+    function chooseArabicVoice() {
+      if (!('speechSynthesis' in window)) return null;
+
+      const voices = window.speechSynthesis.getVoices() || [];
+      return voices.find(function(v) {
+        return /^ar(-|_)/i.test(v.lang || '');
+      }) || null;
+    }
+
     function speakArabic(text, thenListen) {
       if (!text) return;
 
       if (!('speechSynthesis' in window)) {
         setStatus('Speech output is unavailable. Tap Start Voice to answer.');
+        if (thenListen && voiceEnabled) startListening();
         return;
       }
 
@@ -179,13 +193,16 @@
       utterance.pitch = 1;
       utterance.volume = 1;
 
+      const arabicVoice = chooseArabicVoice();
+      if (arabicVoice) utterance.voice = arabicVoice;
+
       utterance.onstart = function() {
         shouldKeepListening = false;
-        setStatus('Speaking the CRM question...');
+        setStatus('CRM is speaking...');
       };
 
       utterance.onend = function() {
-        if (thenListen) {
+        if (thenListen && voiceEnabled) {
           setTimeout(function() {
             startListening();
           }, 350);
@@ -195,7 +212,7 @@
       };
 
       utterance.onerror = function() {
-        if (thenListen) {
+        if (thenListen && voiceEnabled) {
           setTimeout(function() {
             startListening();
           }, 350);
@@ -229,12 +246,6 @@
       if (!Ctor) return null;
 
       const r = new Ctor();
-
-      /*
-       * Continuous mode prevents the browser's recognition service from
-       * ending the capture after one short recognition segment.
-       * We only submit when the user explicitly presses Stop.
-       */
       r.continuous = true;
       r.interimResults = true;
       r.maxAlternatives = 1;
@@ -242,17 +253,18 @@
 
       r.onstart = function() {
         isListening = true;
+        $('startBtn').disabled = true;
+        $('stopBtn').disabled = false;
         setStatus(
           currentMode === 'answer'
             ? 'Listening for your answer...'
-            : 'Listening... Speak naturally.'
+            : 'Listening... Speak naturally, then tap Stop.'
         );
-        $('startBtn').disabled = true;
-        $('stopBtn').disabled = false;
       };
 
       r.onresult = function(event) {
         let interim = '';
+        let gotFinal = false;
 
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const result = event.results[i];
@@ -260,22 +272,39 @@
 
           if (result.isFinal) {
             finalText += text + ' ';
+            gotFinal = true;
           } else {
             interim += text;
           }
         }
 
-        setTranscript((finalText + interim).trim());
+        const visibleText = (finalText + interim).trim();
+        setTranscript(visibleText);
+
+        /*
+         * No Stop button is needed for normal conversation.
+         * Once the recognition service gives us final words and the user
+         * stays silent for a short period, we automatically finish the
+         * turn, stop recognition, and send the transcript to the CRM.
+         */
+        if (gotFinal && finalText.trim()) {
+          clearTimeout(silenceTimer);
+          silenceTimer = setTimeout(function() {
+            if (!shouldKeepListening || !finalText.trim()) return;
+
+            shouldKeepListening = false;
+            clearTimeout(restartTimer);
+
+            if (recognition) {
+              try { recognition.stop(); } catch (e) {}
+            }
+          }, SILENCE_MS);
+        }
       };
 
       r.onerror = function(event) {
         const error = event && event.error ? event.error : 'unknown';
 
-        /*
-         * These errors can be transient in browser speech services.
-         * Keep the recording session alive unless the user denied access
-         * or explicitly stopped it.
-         */
         if (error === 'not-allowed' || error === 'service-not-allowed') {
           shouldKeepListening = false;
           isListening = false;
@@ -295,15 +324,13 @@
           $('stopBtn').disabled = true;
           setStatus('');
           showError(
-            'The browser could not capture the microphone. Check that the correct microphone is connected and not being used by another app.'
+            'The browser could not capture the microphone. Check the microphone and try again.'
           );
           return;
         }
 
         if (shouldKeepListening) {
           setStatus('Reconnecting voice recognition...');
-        } else {
-          setStatus('');
         }
       };
 
@@ -315,11 +342,8 @@
         $('stopBtn').disabled = !keep;
 
         if (keep) {
-          /*
-           * SpeechRecognition can disconnect on its own even while the user
-           * is still recording. Restart it without losing finalText.
-           */
           clearTimeout(restartTimer);
+
           restartTimer = setTimeout(function() {
             if (!shouldKeepListening) return;
 
@@ -327,10 +351,10 @@
               recognition = buildRecognition();
               recognition.start();
             } catch (e) {
-              setStatus('Reconnecting voice recognition...');
               clearTimeout(restartTimer);
               restartTimer = setTimeout(function() {
                 if (!shouldKeepListening) return;
+
                 try {
                   recognition = buildRecognition();
                   recognition.start();
@@ -344,51 +368,90 @@
 
         $('startBtn').disabled = false;
         $('stopBtn').disabled = true;
+        clearTimeout(silenceTimer);
 
         const text = finalText.trim();
 
         if (text) {
           sendTranscript(text);
         } else {
-          setStatus('No speech detected. Tap Start Voice and speak immediately.');
+          setStatus('No speech detected. Tap Start Voice and speak.');
         }
       };
 
       return r;
     }
 
-    async function startListening() {
+    /*
+     * THIS is the one user action we need on the Voice Page.
+     * It activates the voice session for the browser. After this,
+     * CRM questions can be spoken automatically and the page can
+     * automatically listen again after each question.
+     */
+    async function startVoiceSession() {
       clearError();
 
       if (!getRecognitionCtor()) {
         showError(
-          'Speech Recognition is not available in this browser. Try Chrome or Safari on the phone.'
+          'Speech Recognition is not available in this browser. Use recent Chrome/Edge on Android or Safari on iPhone.'
         );
+        return;
+      }
+
+      if (voiceEnabled) {
+        if (questionText) {
+          speakArabic(questionText, true);
+        } else {
+          startListening();
+        }
+        return;
+      }
+
+      try {
+        setStatus('Enabling microphone and voice...');
+
+        await requestMicrophonePermission();
+
+        voiceEnabled = true;
+
+        /*
+         * The click that enabled the session is a real user activation.
+         * Use it immediately for speech output when a CRM question is
+         * already waiting.
+         */
+        if (questionText) {
+          speakArabic(questionText, true);
+        } else {
+          startListening();
+        }
+
+      } catch (error) {
+        showError(
+          'Please allow microphone access for this page. If permission is blocked, open the browser site settings and set Microphone to Allow.'
+        );
+        setStatus('');
+      }
+    }
+
+    function startListening() {
+      clearError();
+
+      if (!voiceEnabled) {
+        startVoiceSession();
+        return;
+      }
+
+      if (!getRecognitionCtor()) {
+        showError('Speech Recognition is not available in this browser.');
         return;
       }
 
       if (isListening) return;
 
-      try {
-        /*
-         * Explicitly ask for microphone permission from this top-level
-         * HTTPS GitHub Pages document before starting SpeechRecognition.
-         */
-        await requestMicrophonePermission();
-      } catch (error) {
-        showError(
-          'Please allow microphone access for this page. If permission was already blocked, open the browser site settings and set Microphone to Allow.'
-        );
-        return;
-      }
-
-      clearError();
-
       finalText = '';
       setTranscript('');
 
       shouldKeepListening = true;
-      currentMode = $('modeTitle').dataset.mode || currentMode;
 
       try {
         recognition = buildRecognition();
@@ -404,12 +467,11 @@
 
     function stopListening() {
       shouldKeepListening = false;
+      clearTimeout(silenceTimer);
       clearTimeout(restartTimer);
 
       if (recognition) {
-        try {
-          recognition.stop();
-        } catch (e) {}
+        try { recognition.stop(); } catch (e) {}
       }
 
       isListening = false;
@@ -421,22 +483,22 @@
       const opener = window.opener;
 
       if (!opener || opener.closed) {
-        /*
-         * Direct testing of the GitHub page is still useful: the transcript
-         * remains visible. Automatic CRM delivery requires opening this page
-         * through the CRM's Voice Mode button.
-         */
-        setStatus('Speech captured. Open Voice Mode from MG RESALE for automatic delivery.');
+        setStatus(
+          'Speech captured. Open this page from MG RESALE for automatic delivery.'
+        );
         return;
       }
 
       setStatus('Sending to MG RESALE...');
 
       try {
-        opener.postMessage({
-          type: 'VOICE_TRANSCRIPT',
-          text: text
-        }, '*');
+        opener.postMessage(
+          {
+            type: 'VOICE_TRANSCRIPT',
+            text: text
+          },
+          '*'
+        );
 
         setStatus('Sent to MG RESALE.');
       } catch (e) {
@@ -446,12 +508,11 @@
 
     function resetVoice() {
       shouldKeepListening = false;
+      clearTimeout(silenceTimer);
       clearTimeout(restartTimer);
 
       if (recognition) {
-        try {
-          recognition.abort();
-        } catch (e) {}
+        try { recognition.abort(); } catch (e) {}
       }
 
       try { window.speechSynthesis.cancel(); } catch (e) {}
@@ -469,8 +530,8 @@
 
     function setQuestion(text, mode) {
       currentMode = mode || 'answer';
-      $('modeTitle').dataset.mode = currentMode;
 
+      $('modeTitle').dataset.mode = currentMode;
       $('modeTitle').textContent =
         currentMode === 'answer' ? 'CRM Question' : 'New Call';
 
@@ -485,10 +546,13 @@
         $('questionText').textContent = questionText;
         $('question').classList.remove('hidden');
 
-        /*
-         * Speak first, then start microphone capture.
-         */
-        speakArabic(questionText, true);
+        if (voiceEnabled) {
+          speakArabic(questionText, true);
+        } else {
+          setStatus(
+            'Tap Start Voice once to enable the full voice conversation.'
+          );
+        }
       } else {
         $('question').classList.add('hidden');
       }
@@ -498,10 +562,19 @@
       currentMode = 'call';
       $('modeTitle').dataset.mode = 'call';
       $('modeTitle').textContent = 'Ready';
+
       $('modeText').textContent =
-        'Tap Start Voice, speak naturally, then tap Stop. Your speech will be sent back to MG RESALE automatically.';
+        'Tap Start Voice once, then speak naturally. When you stop speaking for a short moment, the CRM processes automatically. The Process Now button is only an optional manual fallback.';
+
       $('question').classList.add('hidden');
-      resetVoice();
+
+      finalText = '';
+      setTranscript('');
+      clearError();
+      setStatus('Ready.');
+
+      $('startBtn').disabled = false;
+      $('stopBtn').disabled = true;
     }
 
     function handleCRMMessage(data) {
@@ -511,7 +584,11 @@
         if (data.mode === 'answer') {
           currentMode = 'answer';
           $('modeTitle').dataset.mode = 'answer';
-          setStatus('Ready for your answer.');
+          setStatus(
+            voiceEnabled
+              ? 'Ready for your answer.'
+              : 'Tap Start Voice once to enable voice.'
+          );
         } else {
           readyForNewCall();
         }
@@ -529,6 +606,7 @@
       if (data.type === 'CRM_SPEAK_SUCCESS') {
         shouldKeepListening = false;
         currentMode = 'call';
+        questionText = '';
         $('question').classList.add('hidden');
 
         speakArabic(
@@ -573,7 +651,7 @@
     });
 
     /*
-     * Let the CRM know the Voice Page is ready.
+     * Tell the CRM that Voice Mode is ready.
      */
     try {
       if (window.opener && !window.opener.closed) {
@@ -583,7 +661,7 @@
         );
       } else {
         setStatus(
-          'Ready. For automatic CRM delivery, open this page from MG RESALE Voice Mode.'
+          'Open this page from MG RESALE Voice Mode.'
         );
       }
     } catch (e) {}
