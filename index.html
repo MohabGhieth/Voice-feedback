@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#07131a">
+  <title>MG RESALE — Voice Mode</title>
+  <style>
+    :root {
+      --bg: #07131a;
+      --card: #0d2029;
+      --text: #f4fbfd;
+      --muted: #9eb5bc;
+      --accent: #6ee7d8;
+      --danger: #ff8f8f;
+      --border: rgba(255,255,255,.10);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      min-height: 100svh;
+      background: radial-gradient(circle at top, #12303a 0%, var(--bg) 55%, #040b10 100%);
+      color: var(--text);
+      font-family: Arial, Helvetica, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 14px;
+    }
+    .app { width: 100%; max-width: 620px; }
+    .brand { text-align: center; margin-bottom: 16px; }
+    .brand h1 { margin: 0; font-size: 30px; letter-spacing: .4px; }
+    .brand p { margin: 6px 0 0; color: var(--muted); }
+    .card {
+      background: rgba(13,32,41,.96);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 22px;
+    }
+    .mode {
+      border-radius: 15px;
+      padding: 14px 15px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--border);
+      margin-bottom: 14px;
+      line-height: 1.5;
+    }
+    .mode b { color: var(--accent); }
+    .question {
+      border-radius: 17px;
+      padding: 17px;
+      background: rgba(110,231,216,.10);
+      border: 1px solid rgba(110,231,216,.26);
+      margin-bottom: 14px;
+    }
+    .question small { display:block; color: var(--muted); margin-bottom:7px; }
+    .question strong { display:block; font-size:20px; line-height:1.45; }
+    .transcript {
+      min-height: 150px;
+      white-space: pre-wrap;
+      direction: auto;
+      background: #07161d;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px;
+      line-height: 1.55;
+      overflow-wrap: anywhere;
+      margin-bottom: 14px;
+    }
+    .buttons { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    button {
+      border:0;
+      border-radius:14px;
+      padding:15px 12px;
+      font-size:16px;
+      font-weight:800;
+      cursor:pointer;
+    }
+    .start { background:var(--accent); color:#06211f; }
+    .stop { background:#6f2424; color:white; }
+    .reset { background:#17333d; color:white; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    .status { min-height:24px; margin-top:13px; color:var(--muted); font-size:14px; }
+    .error { margin-top:12px; padding:12px 13px; border-radius:12px; color:#ffd7d7; background:rgba(140,31,31,.22); border:1px solid rgba(255,143,143,.28); }
+    .tip { color:var(--muted); font-size:12px; line-height:1.55; margin-top:13px; }
+    .hidden { display:none !important; }
+    @media (max-width:500px) {
+      body { padding: 12px 10px; align-items:flex-start; }
+      .card { padding: 16px; margin-top: 20px; }
+      .brand h1 { font-size: 27px; }
+      .buttons { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <div class="brand">
+      <h1>MG RESALE</h1>
+      <p>Voice Mode</p>
+    </div>
+
+    <section class="card">
+      <div class="mode">
+        <b id="modeTitle">Ready</b><br>
+        <span id="modeText">Tap Start Voice, speak naturally, then tap Stop. Your answer will be sent back to MG RESALE automatically.</span>
+      </div>
+
+      <div id="question" class="question hidden">
+        <small>CRM asks:</small>
+        <strong id="questionText"></strong>
+      </div>
+
+      <div id="transcript" class="transcript">No speech captured yet.</div>
+
+      <div class="buttons">
+        <button id="startBtn" class="start" type="button" onclick="startListening()">🎙️ Start Voice</button>
+        <button id="stopBtn" class="stop" type="button" onclick="stopListening()" disabled>⏹ Stop</button>
+        <button id="resetBtn" class="reset" type="button" onclick="resetVoice()">↺ Reset</button>
+      </div>
+
+      <div id="status" class="status"></div>
+      <div id="error" class="error hidden"></div>
+
+      <div class="tip">
+        Keep this voice page open. When MG RESALE needs missing information, it will ask the question aloud and this page will listen for your answer.
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let recognition = null;
+    let isListening = false;
+    let finalText = '';
+    let autoListenAfterSpeech = false;
+    let currentMode = 'call';
+    let questionText = '';
+
+    function $(id) { return document.getElementById(id); }
+
+    function showError(message) {
+      $('error').textContent = message || 'Something went wrong.';
+      $('error').classList.remove('hidden');
+    }
+
+    function clearError() {
+      $('error').textContent = '';
+      $('error').classList.add('hidden');
+    }
+
+    function setStatus(message) {
+      $('status').textContent = message || '';
+    }
+
+    function setTranscript(text) {
+      $('transcript').textContent = text || 'No speech captured yet.';
+    }
+
+    function supportedRecognition() {
+      return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+    }
+
+    function speakArabic(text, thenListen) {
+      if (!text) return;
+
+      autoListenAfterSpeech = !!thenListen;
+
+      if (!('speechSynthesis' in window)) {
+        setStatus('Speech output is not available. Tap Start Voice to answer manually.');
+        return;
+      }
+
+      try {
+        window.speechSynthesis.cancel();
+      } catch (e) {}
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'ar-EG';
+      utterance.rate = 0.95;
+      utterance.pitch = 1;
+      utterance.volume = 1;
+
+      utterance.onstart = function() {
+        setStatus('Speaking the CRM question...');
+      };
+
+      utterance.onend = function() {
+        if (autoListenAfterSpeech) {
+          autoListenAfterSpeech = false;
+          setTimeout(function() {
+            startListening();
+          }, 250);
+        } else {
+          setStatus('');
+        }
+      };
+
+      utterance.onerror = function() {
+        if (autoListenAfterSpeech) {
+          autoListenAfterSpeech = false;
+          startListening();
+        }
+      };
+
+      window.speechSynthesis.speak(utterance);
+    }
+
+    function buildRecognition() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) return null;
+
+      const r = new SpeechRecognition();
+      r.lang = 'ar-EG';
+      r.continuous = false;
+      r.interimResults = true;
+      r.maxAlternatives = 1;
+
+      r.onstart = function() {
+        isListening = true;
+        $('startBtn').disabled = true;
+        $('stopBtn').disabled = false;
+        setStatus(currentMode === 'answer' ? 'Listening for your answer...' : 'Listening...');
+      };
+
+      r.onresult = function(event) {
+        let interim = '';
+        let newlyFinal = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const text = event.results[i][0].transcript;
+          if (event.results[i].isFinal) newlyFinal += text + ' ';
+          else interim += text;
+        }
+
+        finalText += newlyFinal;
+        setTranscript((finalText + interim).trim());
+      };
+
+      r.onerror = function(event) {
+        isListening = false;
+        $('startBtn').disabled = false;
+        $('stopBtn').disabled = true;
+
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          showError('Microphone permission was denied. Allow microphone access for this site, then tap Start Voice again.');
+        } else if (event.error !== 'aborted') {
+          showError('Voice recognition error: ' + event.error);
+        }
+
+        setStatus('');
+      };
+
+      r.onend = function() {
+        const wasListening = isListening;
+        isListening = false;
+        $('startBtn').disabled = false;
+        $('stopBtn').disabled = true;
+
+        const text = finalText.trim();
+
+        if (text) {
+          sendTranscript(text);
+        } else if (wasListening) {
+          setStatus('No speech detected. Tap Start Voice and try again.');
+        }
+      };
+
+      return r;
+    }
+
+    function startListening() {
+      clearError();
+
+      if (!supportedRecognition()) {
+        showError('This browser does not provide Speech Recognition. Use a recent Chrome/Edge/Safari browser with microphone permission.');
+        return;
+      }
+
+      if (isListening) return;
+
+      try {
+        finalText = '';
+        setTranscript('');
+        recognition = buildRecognition();
+        currentMode = $('modeTitle').dataset.mode || currentMode;
+        recognition.start();
+      } catch (e) {
+        showError('Could not start the microphone. Please tap Start Voice again.');
+      }
+    }
+
+    function stopListening() {
+      if (recognition && isListening) {
+        try { recognition.stop(); } catch (e) {}
+      }
+    }
+
+    function sendTranscript(text) {
+      const opener = window.opener;
+      if (!opener || opener.closed) {
+        showError('MG RESALE is not open. Open Voice Mode from the CRM so the transcript can be returned automatically.');
+        setStatus('Transcript captured but not delivered.');
+        return;
+      }
+
+      setStatus('Sending to MG RESALE...');
+
+      try {
+        opener.postMessage({
+          type: 'VOICE_TRANSCRIPT',
+          text: text
+        }, '*');
+      } catch (e) {
+        showError('Could not return the transcript to MG RESALE.');
+      }
+    }
+
+    function resetVoice() {
+      if (recognition && isListening) {
+        try { recognition.stop(); } catch (e) {}
+      }
+      finalText = '';
+      setTranscript('');
+      clearError();
+      setStatus('Ready.');
+    }
+
+    function setQuestion(text, mode) {
+      currentMode = mode || 'answer';
+      $('modeTitle').dataset.mode = currentMode;
+      $('modeTitle').textContent = currentMode === 'answer' ? 'CRM Question' : 'New Call';
+      $('modeText').textContent = currentMode === 'answer'
+        ? 'Listen to the question, then answer naturally.'
+        : 'Tap Start Voice and describe what happened on the call.';
+      questionText = text || '';
+
+      if (questionText) {
+        $('questionText').textContent = questionText;
+        $('question').classList.remove('hidden');
+        speakArabic(questionText, true);
+      } else {
+        $('question').classList.add('hidden');
+      }
+    }
+
+    function readyForNewCall() {
+      currentMode = 'call';
+      $('modeTitle').dataset.mode = 'call';
+      $('modeTitle').textContent = 'Ready';
+      $('modeText').textContent = 'Tap Start Voice, speak naturally, then tap Stop. Your answer will be sent back to MG RESALE automatically.';
+      $('question').classList.add('hidden');
+      resetVoice();
+    }
+
+    function handleCRMMessage(data) {
+      if (!data || typeof data !== 'object') return;
+
+      if (data.type === 'CRM_OPENED') {
+        if (data.mode === 'answer') {
+          currentMode = 'answer';
+          setStatus('Ready for your answer.');
+        } else {
+          readyForNewCall();
+        }
+        return;
+      }
+
+      if (data.type === 'CRM_SPEAK_QUESTION') {
+        setQuestion(data.text || 'من فضلك اديني المعلومة الناقصة.', 'answer');
+        return;
+      }
+
+      if (data.type === 'CRM_SPEAK_SUCCESS') {
+        currentMode = 'call';
+        $('question').classList.add('hidden');
+        speakArabic(data.text || 'تم الحفظ بنجاح.', false);
+        setStatus('Saved. Ready for the next call.');
+        finalText = '';
+        setTranscript('');
+        return;
+      }
+
+      if (data.type === 'CRM_ERROR') {
+        const text = data.text || 'حصل خطأ.';
+        speakArabic(text, false);
+        showError(text);
+        return;
+      }
+
+      if (data.type === 'CRM_RESET') {
+        readyForNewCall();
+        return;
+      }
+    }
+
+    window.addEventListener('message', function(event) {
+      handleCRMMessage(event.data);
+    });
+
+    window.addEventListener('beforeunload', function() {
+      try {
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage({type:'VOICE_CLOSED'}, '*');
+        }
+      } catch (e) {}
+    });
+
+    /* Notify CRM that this page is ready. */
+    try {
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage({type:'VOICE_READY'}, '*');
+      } else {
+        setStatus('Open this page from MG RESALE Voice Mode.');
+      }
+    } catch (e) {}
+  </script>
+</body>
+</html>
