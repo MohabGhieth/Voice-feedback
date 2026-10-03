@@ -128,13 +128,16 @@
     </section>
   </main>
 
+  
   <script>
     let recognition = null;
     let isListening = false;
+    let shouldKeepListening = false;
     let finalText = '';
-    let autoListenAfterSpeech = false;
     let currentMode = 'call';
     let questionText = '';
+    let restartTimer = null;
+    let permissionStream = null;
 
     function $(id) { return document.getElementById(id); }
 
@@ -156,23 +159,19 @@
       $('transcript').textContent = text || 'No speech captured yet.';
     }
 
-    function supportedRecognition() {
-      return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+    function getRecognitionCtor() {
+      return window.SpeechRecognition || window.webkitSpeechRecognition || null;
     }
 
     function speakArabic(text, thenListen) {
       if (!text) return;
 
-      autoListenAfterSpeech = !!thenListen;
-
       if (!('speechSynthesis' in window)) {
-        setStatus('Speech output is not available. Tap Start Voice to answer manually.');
+        setStatus('Speech output is unavailable. Tap Start Voice to answer.');
         return;
       }
 
-      try {
-        window.speechSynthesis.cancel();
-      } catch (e) {}
+      try { window.speechSynthesis.cancel(); } catch (e) {}
 
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = 'ar-EG';
@@ -181,78 +180,168 @@
       utterance.volume = 1;
 
       utterance.onstart = function() {
+        shouldKeepListening = false;
         setStatus('Speaking the CRM question...');
       };
 
       utterance.onend = function() {
-        if (autoListenAfterSpeech) {
-          autoListenAfterSpeech = false;
+        if (thenListen) {
           setTimeout(function() {
             startListening();
-          }, 250);
+          }, 350);
         } else {
           setStatus('');
         }
       };
 
       utterance.onerror = function() {
-        if (autoListenAfterSpeech) {
-          autoListenAfterSpeech = false;
-          startListening();
+        if (thenListen) {
+          setTimeout(function() {
+            startListening();
+          }, 350);
         }
       };
 
       window.speechSynthesis.speak(utterance);
     }
 
-    function buildRecognition() {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SpeechRecognition) return null;
+    async function requestMicrophonePermission() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('This browser does not provide microphone access.');
+      }
 
-      const r = new SpeechRecognition();
-      r.lang = 'ar-EG';
-      r.continuous = false;
+      if (permissionStream) {
+        permissionStream.getTracks().forEach(function(track) { track.stop(); });
+        permissionStream = null;
+      }
+
+      permissionStream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: false
+      });
+
+      permissionStream.getTracks().forEach(function(track) { track.stop(); });
+      permissionStream = null;
+    }
+
+    function buildRecognition() {
+      const Ctor = getRecognitionCtor();
+      if (!Ctor) return null;
+
+      const r = new Ctor();
+
+      /*
+       * Continuous mode prevents the browser's recognition service from
+       * ending the capture after one short recognition segment.
+       * We only submit when the user explicitly presses Stop.
+       */
+      r.continuous = true;
       r.interimResults = true;
       r.maxAlternatives = 1;
+      r.lang = 'ar-EG';
 
       r.onstart = function() {
         isListening = true;
+        setStatus(
+          currentMode === 'answer'
+            ? 'Listening for your answer...'
+            : 'Listening... Speak naturally.'
+        );
         $('startBtn').disabled = true;
         $('stopBtn').disabled = false;
-        setStatus(currentMode === 'answer' ? 'Listening for your answer...' : 'Listening...');
       };
 
       r.onresult = function(event) {
         let interim = '';
-        let newlyFinal = '';
 
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          const text = event.results[i][0].transcript;
-          if (event.results[i].isFinal) newlyFinal += text + ' ';
-          else interim += text;
+          const result = event.results[i];
+          const text = result[0].transcript || '';
+
+          if (result.isFinal) {
+            finalText += text + ' ';
+          } else {
+            interim += text;
+          }
         }
 
-        finalText += newlyFinal;
         setTranscript((finalText + interim).trim());
       };
 
       r.onerror = function(event) {
-        isListening = false;
-        $('startBtn').disabled = false;
-        $('stopBtn').disabled = true;
+        const error = event && event.error ? event.error : 'unknown';
 
-        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-          showError('Microphone permission was denied. Allow microphone access for this site, then tap Start Voice again.');
-        } else if (event.error !== 'aborted') {
-          showError('Voice recognition error: ' + event.error);
+        /*
+         * These errors can be transient in browser speech services.
+         * Keep the recording session alive unless the user denied access
+         * or explicitly stopped it.
+         */
+        if (error === 'not-allowed' || error === 'service-not-allowed') {
+          shouldKeepListening = false;
+          isListening = false;
+          $('startBtn').disabled = false;
+          $('stopBtn').disabled = true;
+          setStatus('');
+          showError(
+            'Microphone permission was denied. Allow microphone access for this GitHub Pages site, then press Start Voice again.'
+          );
+          return;
         }
 
-        setStatus('');
+        if (error === 'audio-capture') {
+          shouldKeepListening = false;
+          isListening = false;
+          $('startBtn').disabled = false;
+          $('stopBtn').disabled = true;
+          setStatus('');
+          showError(
+            'The browser could not capture the microphone. Check that the correct microphone is connected and not being used by another app.'
+          );
+          return;
+        }
+
+        if (shouldKeepListening) {
+          setStatus('Reconnecting voice recognition...');
+        } else {
+          setStatus('');
+        }
       };
 
       r.onend = function() {
-        const wasListening = isListening;
+        const keep = shouldKeepListening;
+
         isListening = false;
+        $('startBtn').disabled = !keep;
+        $('stopBtn').disabled = !keep;
+
+        if (keep) {
+          /*
+           * SpeechRecognition can disconnect on its own even while the user
+           * is still recording. Restart it without losing finalText.
+           */
+          clearTimeout(restartTimer);
+          restartTimer = setTimeout(function() {
+            if (!shouldKeepListening) return;
+
+            try {
+              recognition = buildRecognition();
+              recognition.start();
+            } catch (e) {
+              setStatus('Reconnecting voice recognition...');
+              clearTimeout(restartTimer);
+              restartTimer = setTimeout(function() {
+                if (!shouldKeepListening) return;
+                try {
+                  recognition = buildRecognition();
+                  recognition.start();
+                } catch (ignored) {}
+              }, 700);
+            }
+          }, 350);
+
+          return;
+        }
+
         $('startBtn').disabled = false;
         $('stopBtn').disabled = true;
 
@@ -260,46 +349,84 @@
 
         if (text) {
           sendTranscript(text);
-        } else if (wasListening) {
-          setStatus('No speech detected. Tap Start Voice and try again.');
+        } else {
+          setStatus('No speech detected. Tap Start Voice and speak immediately.');
         }
       };
 
       return r;
     }
 
-    function startListening() {
+    async function startListening() {
       clearError();
 
-      if (!supportedRecognition()) {
-        showError('This browser does not provide Speech Recognition. Use a recent Chrome/Edge/Safari browser with microphone permission.');
+      if (!getRecognitionCtor()) {
+        showError(
+          'Speech Recognition is not available in this browser. Try Chrome or Safari on the phone.'
+        );
         return;
       }
 
       if (isListening) return;
 
       try {
-        finalText = '';
-        setTranscript('');
+        /*
+         * Explicitly ask for microphone permission from this top-level
+         * HTTPS GitHub Pages document before starting SpeechRecognition.
+         */
+        await requestMicrophonePermission();
+      } catch (error) {
+        showError(
+          'Please allow microphone access for this page. If permission was already blocked, open the browser site settings and set Microphone to Allow.'
+        );
+        return;
+      }
+
+      clearError();
+
+      finalText = '';
+      setTranscript('');
+
+      shouldKeepListening = true;
+      currentMode = $('modeTitle').dataset.mode || currentMode;
+
+      try {
         recognition = buildRecognition();
-        currentMode = $('modeTitle').dataset.mode || currentMode;
         recognition.start();
-      } catch (e) {
-        showError('Could not start the microphone. Please tap Start Voice again.');
+      } catch (error) {
+        shouldKeepListening = false;
+        isListening = false;
+        $('startBtn').disabled = false;
+        $('stopBtn').disabled = true;
+        showError('Could not start voice recognition. Press Start Voice again.');
       }
     }
 
     function stopListening() {
-      if (recognition && isListening) {
-        try { recognition.stop(); } catch (e) {}
+      shouldKeepListening = false;
+      clearTimeout(restartTimer);
+
+      if (recognition) {
+        try {
+          recognition.stop();
+        } catch (e) {}
       }
+
+      isListening = false;
+      $('startBtn').disabled = false;
+      $('stopBtn').disabled = true;
     }
 
     function sendTranscript(text) {
       const opener = window.opener;
+
       if (!opener || opener.closed) {
-        showError('MG RESALE is not open. Open Voice Mode from the CRM so the transcript can be returned automatically.');
-        setStatus('Transcript captured but not delivered.');
+        /*
+         * Direct testing of the GitHub page is still useful: the transcript
+         * remains visible. Automatic CRM delivery requires opening this page
+         * through the CRM's Voice Mode button.
+         */
+        setStatus('Speech captured. Open Voice Mode from MG RESALE for automatic delivery.');
         return;
       }
 
@@ -310,16 +437,31 @@
           type: 'VOICE_TRANSCRIPT',
           text: text
         }, '*');
+
+        setStatus('Sent to MG RESALE.');
       } catch (e) {
         showError('Could not return the transcript to MG RESALE.');
       }
     }
 
     function resetVoice() {
-      if (recognition && isListening) {
-        try { recognition.stop(); } catch (e) {}
+      shouldKeepListening = false;
+      clearTimeout(restartTimer);
+
+      if (recognition) {
+        try {
+          recognition.abort();
+        } catch (e) {}
       }
+
+      try { window.speechSynthesis.cancel(); } catch (e) {}
+
       finalText = '';
+      isListening = false;
+
+      $('startBtn').disabled = false;
+      $('stopBtn').disabled = true;
+
       setTranscript('');
       clearError();
       setStatus('Ready.');
@@ -328,15 +470,24 @@
     function setQuestion(text, mode) {
       currentMode = mode || 'answer';
       $('modeTitle').dataset.mode = currentMode;
-      $('modeTitle').textContent = currentMode === 'answer' ? 'CRM Question' : 'New Call';
-      $('modeText').textContent = currentMode === 'answer'
-        ? 'Listen to the question, then answer naturally.'
-        : 'Tap Start Voice and describe what happened on the call.';
+
+      $('modeTitle').textContent =
+        currentMode === 'answer' ? 'CRM Question' : 'New Call';
+
+      $('modeText').textContent =
+        currentMode === 'answer'
+          ? 'Listen to the question, then answer naturally.'
+          : 'Tap Start Voice and describe what happened on the call.';
+
       questionText = text || '';
 
       if (questionText) {
         $('questionText').textContent = questionText;
         $('question').classList.remove('hidden');
+
+        /*
+         * Speak first, then start microphone capture.
+         */
         speakArabic(questionText, true);
       } else {
         $('question').classList.add('hidden');
@@ -347,7 +498,8 @@
       currentMode = 'call';
       $('modeTitle').dataset.mode = 'call';
       $('modeTitle').textContent = 'Ready';
-      $('modeText').textContent = 'Tap Start Voice, speak naturally, then tap Stop. Your answer will be sent back to MG RESALE automatically.';
+      $('modeText').textContent =
+        'Tap Start Voice, speak naturally, then tap Stop. Your speech will be sent back to MG RESALE automatically.';
       $('question').classList.add('hidden');
       resetVoice();
     }
@@ -358,6 +510,7 @@
       if (data.type === 'CRM_OPENED') {
         if (data.mode === 'answer') {
           currentMode = 'answer';
+          $('modeTitle').dataset.mode = 'answer';
           setStatus('Ready for your answer.');
         } else {
           readyForNewCall();
@@ -366,14 +519,23 @@
       }
 
       if (data.type === 'CRM_SPEAK_QUESTION') {
-        setQuestion(data.text || 'من فضلك اديني المعلومة الناقصة.', 'answer');
+        setQuestion(
+          data.text || 'من فضلك اديني المعلومة الناقصة.',
+          'answer'
+        );
         return;
       }
 
       if (data.type === 'CRM_SPEAK_SUCCESS') {
+        shouldKeepListening = false;
         currentMode = 'call';
         $('question').classList.add('hidden');
-        speakArabic(data.text || 'تم الحفظ بنجاح.', false);
+
+        speakArabic(
+          data.text || 'تم الحفظ بنجاح.',
+          false
+        );
+
         setStatus('Saved. Ready for the next call.');
         finalText = '';
         setTranscript('');
@@ -381,7 +543,10 @@
       }
 
       if (data.type === 'CRM_ERROR') {
+        shouldKeepListening = false;
+
         const text = data.text || 'حصل خطأ.';
+
         speakArabic(text, false);
         showError(text);
         return;
@@ -389,7 +554,6 @@
 
       if (data.type === 'CRM_RESET') {
         readyForNewCall();
-        return;
       }
     }
 
@@ -400,19 +564,30 @@
     window.addEventListener('beforeunload', function() {
       try {
         if (window.opener && !window.opener.closed) {
-          window.opener.postMessage({type:'VOICE_CLOSED'}, '*');
+          window.opener.postMessage(
+            { type: 'VOICE_CLOSED' },
+            '*'
+          );
         }
       } catch (e) {}
     });
 
-    /* Notify CRM that this page is ready. */
+    /*
+     * Let the CRM know the Voice Page is ready.
+     */
     try {
       if (window.opener && !window.opener.closed) {
-        window.opener.postMessage({type:'VOICE_READY'}, '*');
+        window.opener.postMessage(
+          { type: 'VOICE_READY' },
+          '*'
+        );
       } else {
-        setStatus('Open this page from MG RESALE Voice Mode.');
+        setStatus(
+          'Ready. For automatic CRM delivery, open this page from MG RESALE Voice Mode.'
+        );
       }
     } catch (e) {}
   </script>
+
 </body>
 </html>
