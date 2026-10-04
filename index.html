@@ -38,6 +38,7 @@ let sessionFinalText='',sessionInterimText='',turnTranscript='';
 let sessionRotateTimer=null;
 let processingWatchdog=null;
 let startWatchdog=null,startRetryCount=0;
+let recoveryTimer=null;
 const $=id=>document.getElementById(id);
 function status(t){$('status').textContent=t||''}function showError(t){$('error').textContent=t||'';$('error').classList.remove('hidden')}function clearError(){$('error').textContent='';$('error').classList.add('hidden')}
 function getCurrentVoiceText_(){
@@ -340,7 +341,7 @@ function startListening(){
   sessionInterimText='';
   turnTranscript='';
   speechActive=false;
-  clearTimeout(recoveryTimer);
+  clearRecoveryTimer_();
   if(currentMode==='call') correctedLiveText='';
   render();
 
@@ -640,6 +641,11 @@ function handleResult(data){
   status('');
 }
 
+function clearRecoveryTimer_(){
+  clearTimeout(recoveryTimer);
+  recoveryTimer=null;
+}
+
 function clearStartWatchdog_(){
   clearTimeout(startWatchdog);
   startWatchdog=null;
@@ -738,7 +744,7 @@ function reset(){
   sessionInterimText='';
   correctedLiveText='';
   turnTranscript='';
-  clearTimeout(recoveryTimer);
+  clearRecoveryTimer_();
   conversation=[];
   questionText='';
   currentMode='call';
