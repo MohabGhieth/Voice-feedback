@@ -79,6 +79,43 @@ function scheduleRecognitionSilence(){
 }
 
 
+async function correctAnswerContext_(raw){
+  const q=String(questionText||'').trim();
+  const a=String(raw||'').trim();
+  if(!q || !a || phoneMode) return a;
+
+  const nq=q.toLowerCase();
+  const na=a.toLowerCase().trim();
+
+  // High-confidence ASR aliases first. This prevents Gemini from being
+  // forced to guess common real-estate words.
+  if(/المكان|المشروع|location|project/.test(nq)){
+    if(/^(up to one|up town|uptown|اب تاون|ابتاون|أب تاون|ابتون)[.!؟ ]*$/i.test(na)) return 'Uptown Cairo';
+  }
+  if(/المصدر|source/.test(nq)){
+    if(/^(اليمنت|المنت|element|إليمنت|المنت)[.!؟ ]*$/i.test(na)) return 'Element';
+  }
+  if(/نوع الوحدة|الوحدة|unit type/.test(nq)){
+    if(/^(ستاندالون|ستاند الون|stand alone|standalone)[.!؟ ]*$/i.test(na)) return 'Standalone';
+  }
+  if(/ميعاد التسليم|تاريخ التسليم|delivery/.test(nq)){
+    if(/استلام فوري|فورى|فوري|ready to move/i.test(na)) return 'استلام فوري';
+  }
+
+  try{
+    const data=await jsonpRequest({api:'voiceCorrectAnswer',question:q,answer:a},12000);
+    if(data&&data.success&&data.corrected) return String(data.corrected).trim();
+  }catch(e){}
+  return a;
+}
+
+function queueLiveCorrection(segment){
+  clearTimeout(liveCorrectionTimer);
+  const text=String(segment||'').trim();
+  if(!text || currentMode!=='call' || phoneMode) return;
+  liveCorrectionTimer=setTimeout(()=>correctLiveSegment_(text),650);
+}
+
 function buildRecognition(){
   const C=ctor();
   if(!C) return null;
@@ -312,7 +349,18 @@ function finishTurn(){
     return;
   }
 
-  conversation.push((currentMode==='answer'?'ANSWER: ':'FEEDBACK: ')+t);
+  if(currentMode==='answer'){
+    status('Checking your answer...');
+    correctAnswerContext_(t).then(corrected=>{
+      conversation.push('ANSWER: '+corrected);
+      correctedLiveText='';
+      render();
+      processConversation();
+    });
+    return;
+  }
+
+  conversation.push('FEEDBACK: '+t);
   correctedLiveText='';
   render();
   processConversation();
