@@ -22,7 +22,7 @@
 <button id="resetBtn" class="reset" type="button">↺ Reset</button>
 </div>
 <div id="status" class="status"></div><div id="error" class="error hidden"></div>
-<div class="tip">One page only. No popup. The microphone runs on GitHub Pages. MG RESALE keeps the full original call story, extracts CRM values separately, validates critical data, and calculates follow-up dates from Cairo time.</div>
+<div class="tip">One page only. No popup. GitHub Pages owns Speech Recognition; Apps Script owns CRM/Gemini/Sheets. Live speech and AI correction stay visible while you speak.</div>
 </section>
 </main>
 <script>
@@ -52,214 +52,226 @@ function ctor(){return window.SpeechRecognition||window.webkitSpeechRecognition|
 function arabicVoice(){if(!('speechSynthesis'in window))return null;return (speechSynthesis.getVoices()||[]).find(v=>/^ar(-|_)/i.test(v.lang||''))||null}
 function speak(text,listenAfter){if(!text)return;if(!('speechSynthesis'in window)){if(listenAfter)startListening();return}try{speechSynthesis.cancel()}catch(e){}const u=new SpeechSynthesisUtterance(text);u.lang='ar-EG';u.rate=.95;u.pitch=1;u.volume=1;const v=arabicVoice();if(v)u.voice=v;u.onstart=()=>{shouldKeepListening=false;status('CRM is speaking...')};u.onend=()=>{if(listenAfter&&voiceEnabled)setTimeout(startListening,350);else status('')};u.onerror=()=>{if(listenAfter&&voiceEnabled)setTimeout(startListening,350)};speechSynthesis.speak(u)}
 
-async function startMicMonitor(){
-  if(micStream) return;
-  if(!navigator.mediaDevices?.getUserMedia) return;
 
-  micStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
-
-  try{
-    audioContext=new (window.AudioContext||window.webkitAudioContext)();
-    await audioContext.resume();
-    analyser=audioContext.createAnalyser();
-    analyser.fftSize=2048;
-    analyser.smoothingTimeConstant=0.15;
-    const source=audioContext.createMediaStreamSource(micStream);
-    source.connect(analyser);
-    lastVoiceAt=Date.now();
-    heardSpeech=false;
-    monitorSilence();
-  }catch(e){
-    // SpeechRecognition still works even if the analyser is unavailable.
-    analyser=null;
-  }
+function startMicMonitor(){
+  // Permission is handled by SpeechRecognition itself.
+  // Do NOT open a second getUserMedia stream: on some Chromium builds,
+  // competing microphone consumers make SpeechRecognition stop producing results.
+  return Promise.resolve();
 }
-
-function monitorSilence(){
-  cancelAnimationFrame(silenceFrame);
-
-  if(!shouldKeepListening || !analyser){
-    return;
-  }
-
-  const data=new Uint8Array(analyser.fftSize);
-  analyser.getByteTimeDomainData(data);
-
-  let sum=0;
-  for(let i=0;i<data.length;i++){
-    const v=(data[i]-128)/128;
-    sum+=v*v;
-  }
-  const rms=Math.sqrt(sum/data.length);
-
-  // Ignore very low background noise. Human speech normally produces
-  // a substantially higher RMS level.
-  if(rms>0.018){
-    lastVoiceAt=Date.now();
-    heardSpeech=true;
-  }
-
-  // Finish only after:
-  // 1) actual microphone silence for 3 seconds,
-  // 2) speech was detected,
-  // 3) we have transcript text,
-  // 4) there is no active interim transcript.
-  if(
-    shouldKeepListening &&
-    heardSpeech &&
-    (finalText.trim() || interimText.trim()) &&
-    !interimText.trim() &&
-    Date.now()-lastVoiceAt>=SILENCE_MS
-  ){
-    finishTurn();
-    return;
-  }
-
-  silenceFrame=requestAnimationFrame(monitorSilence);
-}
-
 function stopMicMonitor(){
-  cancelAnimationFrame(silenceFrame);
+  clearTimeout(silenceTimer);
   silenceFrame=null;
-
-  if(micStream){
-    micStream.getTracks().forEach(t=>{try{t.stop()}catch(e){}});
-    micStream=null;
-  }
-
-  if(audioContext){
-    try{audioContext.close()}catch(e){}
-    audioContext=null;
-  }
-
+  micStream=null;
   analyser=null;
   heardSpeech=false;
 }
 
-
-function jsonpRequest(params,timeoutMs=12000){
-  return new Promise((resolve,reject)=>{
-    const cb='mgVoiceCb_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7);
-    let done=false;
-    const script=document.createElement('script');
-    const query=new URLSearchParams({...params,callback:cb});
-    const timer=setTimeout(()=>finish(null,new Error('CRM request timed out.')),timeoutMs);
-    function cleanup(){
-      clearTimeout(timer);
-      try{script.remove()}catch(e){}
-      try{delete window[cb]}catch(e){window[cb]=undefined}
+function scheduleRecognitionSilence(){
+  clearTimeout(silenceTimer);
+  silenceTimer=setTimeout(()=>{
+    if(!shouldKeepListening || requestBusy) return;
+    const text=(finalText+' '+interimText).trim();
+    if(heardSpeech && text){
+      finishTurn();
     }
-    function finish(value,err){
-      if(done)return;
-      done=true;
-      cleanup();
-      err?reject(err):resolve(value);
-    }
-    window[cb]=data=>finish(data);
-    script.onerror=()=>finish(null,new Error('CRM request failed.'));
-    script.src=API_URL+'?'+query.toString();
-    document.head.appendChild(script);
-  });
+  },SILENCE_MS);
 }
 
-async function correctLiveSegment_(segment){
-  const text=String(segment||'').trim();
-  if(!text || currentMode!=='call' || phoneMode)return;
 
-  const seq=++liveCorrectionSeq;
-  try{
-    const data=await jsonpRequest({api:'voiceCorrect',text:text},12000);
-    if(seq!==liveCorrectionSeq)return;
-    if(data && data.success && data.corrected){
-      correctedLiveText += (correctedLiveText?' ':'') + data.corrected.trim();
-      render();
-    }
-  }catch(e){
-    // Live correction is enhancement only; raw speech remains available.
-  }
-}
+function buildRecognition(){
+  const C=ctor();
+  if(!C) return null;
 
-function queueLiveCorrection(segment){
-  clearTimeout(liveCorrectionTimer);
-  const text=String(segment||'').trim();
-  if(!text || currentMode!=='call' || phoneMode)return;
-  liveCorrectionTimer=setTimeout(()=>correctLiveSegment_(text),650);
-}
+  const r=new C();
+  r.continuous=true;
+  r.interimResults=true;
+  r.maxAlternatives=3;
+  r.lang='ar-EG';
 
-function buildRecognition(){const C=ctor();if(!C)return null;const r=new C();r.continuous=true;r.interimResults=true;r.maxAlternatives=1;r.lang='ar-EG';r.onstart=()=>{isListening=true;$('startBtn').disabled=true;$('stopBtn').disabled=false;status(currentMode==='answer'?'Listening for your answer...':'Listening... Speak naturally.')};r.onresult=e=>{
-  interimText='';
-  let newFinal='';
+  r.onstart=()=>{
+    isListening=true;
+    $('startBtn').disabled=true;
+    $('stopBtn').disabled=false;
+    status(currentMode==='answer'
+      ? 'Listening for your answer...'
+      : 'Listening... Speak naturally.');
+  };
 
-  for(let i=e.resultIndex;i<e.results.length;i++){
-    const x=e.results[i],t=x[0].transcript||'';
-    if(x.isFinal){
-      finalText+=t+' ';
-      newFinal += t+' ';
-    }else{
-      interimText+=t;
-    }
-  }
+  r.onaudiostart=()=>{
+    status(currentMode==='answer'
+      ? 'Microphone active — listening for your answer...'
+      : 'Microphone active — speak naturally.');
+  };
 
-  if((finalText+' '+interimText).trim()){
+  r.onsoundstart=()=>{
     heardSpeech=true;
-    lastVoiceAt=Date.now();
-  }
-
-  if(newFinal.trim() && currentMode==='call' && !phoneMode){
-    queueLiveCorrection(newFinal);
-  }
-
-  render();
-};r.onerror=e=>{const x=e?.error||'';if(x==='not-allowed'||x==='service-not-allowed'){shouldKeepListening=false;isListening=false;$('startBtn').disabled=false;$('stopBtn').disabled=true;showError('Microphone access was blocked by the browser. Check the GitHub Pages microphone permission.');return}if(shouldKeepListening)status('Reconnecting voice recognition...')};r.onend=()=>{
-  isListening=false;
-  $('stopBtn').disabled=!shouldKeepListening;
-  $('startBtn').disabled=shouldKeepListening;
-
-  // SpeechRecognition may end its internal session by itself.
-  // Rebuilding the recognition object here caused the repeated
-  // START -> STOP -> START -> STOP loop.
-  if(shouldKeepListening){
-    clearTimeout(restartTimer);
-    restartTimer=setTimeout(()=>{
-      if(!shouldKeepListening || isListening || requestBusy) return;
-      try{
-        if(!recognition) recognition=buildRecognition();
-        recognition.start();
-      }catch(e){
-        clearTimeout(restartTimer);
-        restartTimer=setTimeout(()=>{
-          if(!shouldKeepListening || isListening || requestBusy) return;
-          try{recognition.start()}catch(err){}
-        },700);
-      }
-    },700);
-  }else{
     clearTimeout(silenceTimer);
-  }
-};
-return r}
+    status('I hear you...');
+  };
+
+  r.onspeechstart=()=>{
+    heardSpeech=true;
+    clearTimeout(silenceTimer);
+    status('Listening to your speech...');
+  };
+
+  r.onresult=e=>{
+    let newFinal='';
+    let newInterim='';
+
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const result=e.results[i];
+      const t=(result[0]?.transcript||'').trim();
+      if(!t) continue;
+
+      if(result.isFinal){
+        finalText += t+' ';
+        newFinal += t+' ';
+      }else{
+        newInterim += t+' ';
+      }
+    }
+
+    interimText=newInterim.trim();
+
+    const live=(finalText+' '+interimText).trim();
+    if(live){
+      heardSpeech=true;
+      clearTimeout(silenceTimer);
+      scheduleRecognitionSilence();
+    }
+
+    // AI correction only for final segments of the main call.
+    // Never run it on phone answers.
+    if(newFinal.trim() && currentMode==='call' && !phoneMode){
+      queueLiveCorrection(newFinal);
+    }
+
+    render();
+  };
+
+  r.onspeechend=()=>{
+    // SpeechRecognition has detected the end of speech.
+    // Do not process immediately; wait the full requested 3 seconds.
+    if(shouldKeepListening && (finalText+' '+interimText).trim()){
+      scheduleRecognitionSilence();
+    }
+  };
+
+  r.onsoundend=()=>{
+    if(shouldKeepListening && (finalText+' '+interimText).trim()){
+      scheduleRecognitionSilence();
+    }
+  };
+
+  r.onaudioend=()=>{
+    if(shouldKeepListening && (finalText+' '+interimText).trim()){
+      scheduleRecognitionSilence();
+    }
+  };
+
+  r.onerror=e=>{
+    const x=String(e?.error||'unknown');
+    const messages={
+      'not-allowed':'Speech recognition permission was blocked. Microphone permission is separate from Speech Recognition permission.',
+      'service-not-allowed':'The browser speech-recognition service is not allowed.',
+      'audio-capture':'The browser cannot access the microphone for Speech Recognition.',
+      'network':'Speech Recognition network service failed. Check the internet connection.',
+      'no-speech':'No speech was detected. Keep speaking normally.',
+      'aborted':'Speech recognition was interrupted.'
+    };
+
+    // "no-speech" is normal during a long pause; don't kill the session.
+    if(x==='no-speech'){
+      if(shouldKeepListening){
+        status('I did not detect speech yet — keep speaking...');
+      }
+      return;
+    }
+
+    if(x==='aborted'){
+      return;
+    }
+
+    if(x==='not-allowed'||x==='service-not-allowed'||x==='audio-capture'){
+      shouldKeepListening=false;
+      isListening=false;
+      $('startBtn').disabled=false;
+      $('stopBtn').disabled=true;
+      showError(messages[x]||('Speech recognition error: '+x));
+      status('');
+      return;
+    }
+
+    if(shouldKeepListening){
+      status(messages[x]||('Speech recognition error: '+x));
+    }
+  };
+
+  r.onend=()=>{
+    isListening=false;
+
+    // If we already have speech text, let the 3-second silence timer
+    // decide when to finish. Otherwise restart recognition quietly.
+    if(shouldKeepListening){
+      const text=(finalText+' '+interimText).trim();
+
+      if(text){
+        scheduleRecognitionSilence();
+      }
+
+      clearTimeout(restartTimer);
+      restartTimer=setTimeout(()=>{
+        if(!shouldKeepListening || isListening || requestBusy) return;
+        try{
+          recognition.start();
+        }catch(e){
+          // A start while Chromium is still shutting down can throw.
+          clearTimeout(restartTimer);
+          restartTimer=setTimeout(()=>{
+            if(!shouldKeepListening || isListening || requestBusy) return;
+            try{recognition.start()}catch(err){
+              showError('Speech Recognition stopped responding. Press Start Voice once to restart it.');
+              shouldKeepListening=false;
+              $('startBtn').disabled=false;
+              $('stopBtn').disabled=true;
+            }
+          },800);
+        }
+      },350);
+    }else{
+      $('stopBtn').disabled=true;
+    }
+  };
+
+  return r;
+}
+
 function startListening(){
   clearError();
   if(!voiceEnabled){startSession();return}
   if(isListening)return;
 
+  clearTimeout(silenceTimer);
+  clearTimeout(restartTimer);
+
   // Fresh text buffer for every answer/turn.
-  // Keep the same SpeechRecognition instance instead of recreating it.
   finalText='';
   interimText='';
   if(currentMode==='call') correctedLiveText='';
   render();
+
   shouldKeepListening=true;
   heardSpeech=false;
-  lastVoiceAt=Date.now();
 
   try{
     if(!recognition) recognition=buildRecognition();
     recognition.start();
-    monitorSilence();
   }catch(e){
     shouldKeepListening=false;
-    showError('Could not start voice recognition. Press Start Voice again.');
+    showError('Could not start Speech Recognition: '+(e.message||e));
+    status('');
   }
 }
 function finishTurn(){
@@ -403,25 +415,42 @@ function handleResult(data){if(!data){showError('Empty response from CRM.');$('s
   $('startBtn').disabled=false;
   return;
 }const q=arabicQuestion(data);if(q){ask(q);return}showError(data.message||'CRM could not process the feedback.');$('startBtn').disabled=false;status('')}
-async function startSession(){
+function startSession(){
   clearError();
   if(!ctor()){
-    showError('Speech Recognition is not available. Use recent Chrome or Edge.');
+    showError('Speech Recognition is not available in this browser. Use current Chrome or Edge.');
     return;
   }
 
-  try{
-    status('Enabling microphone...');
-    await startMicMonitor();
-    voiceEnabled=true;
-    startListening();
-  }catch(e){
-    voiceEnabled=false;
-    showError('Please allow microphone access for this GitHub Pages site.');
-    status('');
-  }
+  voiceEnabled=true;
+  status('Starting Speech Recognition...');
+  startListening();
 }
-function reset(){shouldKeepListening=false;clearTimeout(silenceTimer);clearTimeout(restartTimer);stopMicMonitor();if(recognition)try{recognition.abort()}catch(e){}try{speechSynthesis.cancel()}catch(e){}recognition=null;isListening=false;voiceEnabled=false;finalText='';interimText='';conversation=[];questionText='';currentMode='call';$('question').classList.add('hidden');$('startBtn').disabled=false;$('stopBtn').disabled=true;$('modeTitle').textContent='Ready';$('modeText').textContent='Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically.';render();status('Ready.');clearError()}
+function reset(){
+  shouldKeepListening=false;
+  clearTimeout(silenceTimer);
+  clearTimeout(restartTimer);
+  clearTimeout(liveCorrectionTimer);
+  if(recognition)try{recognition.abort()}catch(e){}
+  try{speechSynthesis.cancel()}catch(e){}
+  recognition=null;
+  isListening=false;
+  voiceEnabled=false;
+  finalText='';
+  interimText='';
+  correctedLiveText='';
+  conversation=[];
+  questionText='';
+  currentMode='call';
+  $('question').classList.add('hidden');
+  $('startBtn').disabled=false;
+  $('stopBtn').disabled=true;
+  $('modeTitle').textContent='Ready';
+  $('modeText').textContent='Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically.';
+  render();
+  status('Ready.');
+  clearError();
+}
 $('startBtn').onclick=startSession;$('stopBtn').onclick=stopNow;$('resetBtn').onclick=reset;
 </script>
 </body>
