@@ -27,20 +27,42 @@ const SILENCE_MS=3000;
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 const startBtn=document.getElementById('start'),processBtn=document.getElementById('process'),statusEl=document.getElementById('status'),transcriptEl=document.getElementById('transcript');
 let rec=null,keep=false,finalText='',interim='',timer=null,busy=false;
+let sessionTranscript='';
+let lastQuestion='';
+let sessionActive=false;
 
 function status(t,c=''){statusEl.textContent=t;statusEl.className=c}
-function render(){transcriptEl.textContent=(finalText+' '+interim).trim()}
+function render(){transcriptEl.textContent=(sessionTranscript+'\n'+finalText+' '+interim).trim()}
 function clearTimer(){if(timer)clearTimeout(timer);timer=null}
 function speak(t){if(!('speechSynthesis'in window)||!t)return;speechSynthesis.cancel();let u=new SpeechSynthesisUtterance(t);u.lang='ar-EG';u.rate=1.05;speechSynthesis.speak(u)}
 function arm(){clearTimer();timer=setTimeout(()=>{if(finalText.trim()){keep=false;try{rec.stop()}catch(e){}}},SILENCE_MS)}
 function setup(){
  if(!SR){status('Speech Recognition غير مدعوم في المتصفح. استخدم Chrome/Android أو Safari/iPhone.','err');return false}
  rec=new SR();rec.lang='ar-EG';rec.continuous=true;rec.interimResults=true;rec.maxAlternatives=1;
- rec.onstart=()=>status('اتكلم براحتك... مش هسألك أي سؤال لحد ما تخلص الـ feedback.');
- rec.onresult=e=>{interim='';for(let i=e.resultIndex;i<e.results.length;i++){let t=e.results[i][0].transcript||'';if(e.results[i].isFinal)finalText+=t+' ';else interim+=t}render();if(finalText.trim())arm()};
- rec.onerror=e=>{if(e.error==='not-allowed'||e.error==='service-not-allowed'){keep=false;status('المايك مرفوض. Allow Microphone للموقع ثم جرّب مرة أخرى.','err')}else if(e.error!=='aborted')status('Voice error: '+e.error,'err')};
- rec.onend=()=>{if(keep&&!busy){setTimeout(()=>{try{rec.start()}catch(e){}},150)}else if(!busy&&finalText.trim())send()};
- return true
+ rec.onstart=()=>status(sessionActive&&lastQuestion?'جاوب على السؤال براحتك...':'اتكلم براحتك... مش هسألك أي سؤال لحد ما تخلص الـ feedback.');
+ rec.onresult=e=>{
+   interim='';
+   for(let i=e.resultIndex;i<e.results.length;i++){
+     let t=e.results[i][0].transcript||'';
+     if(e.results[i].isFinal) finalText+=t+' ';
+     else interim+=t;
+   }
+   render();
+   if(finalText.trim())arm();
+ };
+ rec.onerror=e=>{
+   if(e.error==='not-allowed'||e.error==='service-not-allowed'){
+     keep=false;status('المايك مرفوض. Allow Microphone للموقع ثم جرّب مرة أخرى.','err');
+   }else if(e.error!=='aborted') status('Voice error: '+e.error,'err');
+ };
+ rec.onend=()=>{
+   if(keep&&!busy){
+     setTimeout(()=>{try{rec.start()}catch(e){}},150);
+   }else if(!busy&&finalText.trim()){
+     send();
+   }
+ };
+ return true;
 }
 async function mic(){
  if(!navigator.mediaDevices?.getUserMedia)return true;
@@ -48,31 +70,78 @@ async function mic(){
  catch(e){status('Allow Microphone للموقع من إعدادات المتصفح ثم اضغط Start Voice مرة أخرى.','err');return false}
 }
 async function start(){
- if(busy)return;if(!rec&&!setup())return;if(!(await mic()))return;
- finalText='';interim='';render();clearTimer();keep=true;processBtn.style.display='block';try{rec.start()}catch(e){}
+ if(busy||sessionActive)return;
+ if(!rec&&!setup())return;
+ if(!(await mic()))return;
+ finalText='';interim='';sessionTranscript='';lastQuestion='';sessionActive=true;render();clearTimer();keep=true;
+ processBtn.style.display='block';startBtn.disabled=true;
+ try{rec.start()}catch(e){}
 }
-function manual(){if(!finalText.trim())return;keep=false;clearTimer();try{rec.stop()}catch(e){}}
+function manual(){
+ if(!finalText.trim())return;
+ keep=false;clearTimer();try{rec.stop()}catch(e){}
+}
+function addUserTurn(){
+ const answer=finalText.trim();
+ if(!answer)return '';
+ if(lastQuestion){
+   sessionTranscript += '\nCRM question: '+lastQuestion+'\nSalesperson answer: '+answer+'\n';
+ }else{
+   sessionTranscript += '\nOriginal call feedback: '+answer+'\n';
+ }
+ return answer;
+}
 async function ask(q){
- status(q,'warn');speak(q);
- await new Promise(r=>{if(!('speechSynthesis'in window))return r();let x=setInterval(()=>{if(!speechSynthesis.speaking){clearInterval(x);r()}},80)});
- finalText='';interim='';render();clearTimer();keep=true;try{rec.start()}catch(e){}
+ lastQuestion=q||'';
+ status(lastQuestion,'warn');
+ speak(lastQuestion);
+ await new Promise(r=>{
+   if(!('speechSynthesis'in window))return r();
+   let x=setInterval(()=>{if(!speechSynthesis.speaking){clearInterval(x);r()}},80);
+ });
+ finalText='';interim='';render();clearTimer();keep=true;
+ try{rec.start()}catch(e){}
+}
+function resetSession(){
+ keep=false;clearTimer();sessionActive=false;lastQuestion='';sessionTranscript='';finalText='';interim='';render();
+ startBtn.disabled=false;processBtn.style.display='none';processBtn.disabled=false;
 }
 async function send(){
- if(busy||!finalText.trim())return;busy=true;processBtn.disabled=true;startBtn.disabled=true;status('براجع الـ feedback كامل وبحلله...');
+ if(busy||!finalText.trim())return;
+ busy=true;processBtn.disabled=true;startBtn.disabled=true;
+ const answer=addUserTurn();
+ finalText='';interim='';render();
+ status('براجع الـ feedback كامل مع كل الإجابات السابقة وبحلله...');
  try{
-   let r=await fetch(VOICE_API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({transcript:finalText.trim()})});
-   let d=await r.json();await handle(d);
- }catch(e){status('لم أستطع الاتصال بالـ CRM. راجع آخر Deployment للـ Apps Script وتأكد أن الوصول Anyone.','err')}
- finally{busy=false;processBtn.disabled=false;startBtn.disabled=false}
+   const payload=sessionTranscript.trim();
+   let r=await fetch(VOICE_API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({transcript:payload})});
+   let d=await r.json();
+   await handle(d);
+ }catch(e){
+   status('لم أستطع الاتصال بالـ CRM. راجع آخر Deployment للـ Apps Script وتأكد أن الوصول Anyone.','err');
+   speak('لم أستطع الاتصال بالـ CRM.');
+ }
+ finally{busy=false;processBtn.disabled=false;}
 }
 async function handle(d){
  if(!d)return;
- if(d.success){keep=false;status(d.message||'Saved successfully.','ok');speak(d.message||'تم الحفظ بنجاح.');return}
- if(d.type==='REQUIRED_NEW_LEAD_DATA'||d.type==='NEW_CLIENT_MISSING_DATA'||d.type==='SOURCE_REQUIRED'||d.type==='CLIENT_NOT_FOUND'||d.type==='MULTIPLE_CLIENTS'){
-   await ask(d.question||d.message);return
+ if(d.success){
+   status(d.message||'Saved successfully.','ok');
+   speak(d.message||'تم الحفظ بنجاح.');
+   resetSession();
+   return;
  }
- if(d.type==='LEAD_FIELD_CHANGE_CONFIRMATION'){await ask(d.message||'هل تريد تعديل بيانات العميل؟ قل عدل أو ضيف أو سيبها زي ما هي.');return}
- keep=false;status(d.message||'حدث خطأ.','err');speak(d.message||'حدث خطأ أثناء المعالجة.')
+ if(d.type==='REQUIRED_NEW_LEAD_DATA'||d.type==='NEW_CLIENT_MISSING_DATA'||d.type==='SOURCE_REQUIRED'||d.type==='CLIENT_NOT_FOUND'||d.type==='MULTIPLE_CLIENTS'){
+   await ask(d.question||d.message);
+   return;
+ }
+ if(d.type==='LEAD_FIELD_CHANGE_CONFIRMATION'){
+   await ask(d.question||d.message||'هل تريد تعديل بيانات العميل؟ قل عدل أو ضيف أو سيبها زي ما هي.');
+   return;
+ }
+ keep=false;
+ status(d.message||'حدث خطأ.','err');
+ speak(d.message||'حدث خطأ أثناء المعالجة.');
 }
 startBtn.onclick=start;processBtn.onclick=manual;
 </script></body></html>
