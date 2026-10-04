@@ -29,14 +29,118 @@
 const API='https://script.google.com/macros/s/AKfycbyawltTbaWy291FyF95S0GX6oIlnoac5FzDVxFdDSqUG3VyRoTItG4Mj8zZolxRN_GIjw/exec';
 const SILENCE_MS=3000;
 const CHUNK_SIZE=900;
-let recognition=null,isListening=false,shouldKeepListening=false,voiceEnabled=false,finalText='',interimText='',silenceTimer=null,restartTimer=null,currentMode='call',questionText='',conversation=[];
+let recognition=null,isListening=false,shouldKeepListening=false,voiceEnabled=false;
+let finalText='',interimText='',silenceTimer=null,restartTimer=null,currentMode='call',questionText='',conversation=[];
+let micStream=null,audioContext=null,analyser=null,silenceFrame=null,lastVoiceAt=0,heardSpeech=false;
 const $=id=>document.getElementById(id);
 function status(t){$('status').textContent=t||''}function showError(t){$('error').textContent=t||'';$('error').classList.remove('hidden')}function clearError(){$('error').textContent='';$('error').classList.add('hidden')}
-function render(){const rows=conversation.slice();if(finalText.trim())rows.push('CURRENT: '+finalText.trim());$('transcript').textContent=rows.length?rows.join('\n\n'):'No speech captured yet.'}
+function render(){
+  const rows=conversation.slice();
+  const live=(finalText+' '+interimText).trim();
+  if(live)rows.push('CURRENT: '+live);
+  $('transcript').textContent=rows.length?rows.join('\n\n'):'No speech captured yet.';
+}
 function ctor(){return window.SpeechRecognition||window.webkitSpeechRecognition||null}
 function arabicVoice(){if(!('speechSynthesis'in window))return null;return (speechSynthesis.getVoices()||[]).find(v=>/^ar(-|_)/i.test(v.lang||''))||null}
 function speak(text,listenAfter){if(!text)return;if(!('speechSynthesis'in window)){if(listenAfter)startListening();return}try{speechSynthesis.cancel()}catch(e){}const u=new SpeechSynthesisUtterance(text);u.lang='ar-EG';u.rate=.95;u.pitch=1;u.volume=1;const v=arabicVoice();if(v)u.voice=v;u.onstart=()=>{shouldKeepListening=false;status('CRM is speaking...')};u.onend=()=>{if(listenAfter&&voiceEnabled)setTimeout(startListening,350);else status('')};u.onerror=()=>{if(listenAfter&&voiceEnabled)setTimeout(startListening,350)};speechSynthesis.speak(u)}
-function buildRecognition(){const C=ctor();if(!C)return null;const r=new C();r.continuous=true;r.interimResults=true;r.maxAlternatives=1;r.lang='ar-EG';r.onstart=()=>{isListening=true;$('startBtn').disabled=true;$('stopBtn').disabled=false;status(currentMode==='answer'?'Listening for your answer...':'Listening... Speak naturally.')};r.onresult=e=>{interimText='';for(let i=e.resultIndex;i<e.results.length;i++){const x=e.results[i],t=x[0].transcript||'';if(x.isFinal)finalText+=t+' ';else interimText+=t}render();if((finalText+' '+interimText).trim()){clearTimeout(silenceTimer);silenceTimer=setTimeout(()=>{if(shouldKeepListening&&(finalText+' '+interimText).trim())finishTurn()},SILENCE_MS)}};r.onerror=e=>{const x=e?.error||'';if(x==='not-allowed'||x==='service-not-allowed'){shouldKeepListening=false;isListening=false;$('startBtn').disabled=false;$('stopBtn').disabled=true;showError('Microphone access was blocked by the browser. Check the GitHub Pages microphone permission.');return}if(shouldKeepListening)status('Reconnecting voice recognition...')};r.onend=()=>{
+
+async function startMicMonitor(){
+  if(micStream) return;
+  if(!navigator.mediaDevices?.getUserMedia) return;
+
+  micStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+
+  try{
+    audioContext=new (window.AudioContext||window.webkitAudioContext)();
+    await audioContext.resume();
+    analyser=audioContext.createAnalyser();
+    analyser.fftSize=2048;
+    analyser.smoothingTimeConstant=0.15;
+    const source=audioContext.createMediaStreamSource(micStream);
+    source.connect(analyser);
+    lastVoiceAt=Date.now();
+    heardSpeech=false;
+    monitorSilence();
+  }catch(e){
+    // SpeechRecognition still works even if the analyser is unavailable.
+    analyser=null;
+  }
+}
+
+function monitorSilence(){
+  cancelAnimationFrame(silenceFrame);
+
+  if(!shouldKeepListening || !analyser){
+    return;
+  }
+
+  const data=new Uint8Array(analyser.fftSize);
+  analyser.getByteTimeDomainData(data);
+
+  let sum=0;
+  for(let i=0;i<data.length;i++){
+    const v=(data[i]-128)/128;
+    sum+=v*v;
+  }
+  const rms=Math.sqrt(sum/data.length);
+
+  // Ignore very low background noise. Human speech normally produces
+  // a substantially higher RMS level.
+  if(rms>0.018){
+    lastVoiceAt=Date.now();
+    heardSpeech=true;
+  }
+
+  // Finish only after:
+  // 1) actual microphone silence for 3 seconds,
+  // 2) speech was detected,
+  // 3) we have transcript text,
+  // 4) there is no active interim transcript.
+  if(
+    shouldKeepListening &&
+    heardSpeech &&
+    (finalText.trim() || interimText.trim()) &&
+    !interimText.trim() &&
+    Date.now()-lastVoiceAt>=SILENCE_MS
+  ){
+    finishTurn();
+    return;
+  }
+
+  silenceFrame=requestAnimationFrame(monitorSilence);
+}
+
+function stopMicMonitor(){
+  cancelAnimationFrame(silenceFrame);
+  silenceFrame=null;
+
+  if(micStream){
+    micStream.getTracks().forEach(t=>{try{t.stop()}catch(e){}});
+    micStream=null;
+  }
+
+  if(audioContext){
+    try{audioContext.close()}catch(e){}
+    audioContext=null;
+  }
+
+  analyser=null;
+  heardSpeech=false;
+}
+
+function buildRecognition(){const C=ctor();if(!C)return null;const r=new C();r.continuous=true;r.interimResults=true;r.maxAlternatives=1;r.lang='ar-EG';r.onstart=()=>{isListening=true;$('startBtn').disabled=true;$('stopBtn').disabled=false;status(currentMode==='answer'?'Listening for your answer...':'Listening... Speak naturally.')};r.onresult=e=>{
+  interimText='';
+  for(let i=e.resultIndex;i<e.results.length;i++){
+    const x=e.results[i],t=x[0].transcript||'';
+    if(x.isFinal) finalText+=t+' ';
+    else interimText+=t;
+  }
+  if((finalText+' '+interimText).trim()){
+    heardSpeech=true;
+    lastVoiceAt=Date.now();
+  }
+  render();
+};r.onerror=e=>{const x=e?.error||'';if(x==='not-allowed'||x==='service-not-allowed'){shouldKeepListening=false;isListening=false;$('startBtn').disabled=false;$('stopBtn').disabled=true;showError('Microphone access was blocked by the browser. Check the GitHub Pages microphone permission.');return}if(shouldKeepListening)status('Reconnecting voice recognition...')};r.onend=()=>{
   isListening=false;
   $('stopBtn').disabled=!shouldKeepListening;
   $('startBtn').disabled=shouldKeepListening;
@@ -75,16 +179,42 @@ function startListening(){
   interimText='';
   render();
   shouldKeepListening=true;
+  heardSpeech=false;
+  lastVoiceAt=Date.now();
 
   try{
     if(!recognition) recognition=buildRecognition();
     recognition.start();
+    monitorSilence();
   }catch(e){
     shouldKeepListening=false;
     showError('Could not start voice recognition. Press Start Voice again.');
   }
 }
-function finishTurn(){shouldKeepListening=false;clearTimeout(silenceTimer);if(recognition)try{recognition.stop()}catch(e){}isListening=false;$('stopBtn').disabled=true;const t=(finalText+' '+interimText).trim();if(!t){$('startBtn').disabled=false;status('No speech detected.');return}conversation.push((currentMode==='answer'?'ANSWER: ':'FEEDBACK: ')+t);finalText='';interimText='';render();processConversation()}
+function finishTurn(){
+  shouldKeepListening=false;
+  clearTimeout(silenceTimer);
+  cancelAnimationFrame(silenceFrame);
+  silenceFrame=null;
+  if(recognition)try{recognition.stop()}catch(e){}
+  isListening=false;
+  $('stopBtn').disabled=true;
+
+  const t=(finalText+' '+interimText).trim();
+  finalText='';
+  interimText='';
+
+  if(!t){
+    $('startBtn').disabled=false;
+    status('No speech detected.');
+    render();
+    return;
+  }
+
+  conversation.push((currentMode==='answer'?'ANSWER: ':'FEEDBACK: ')+t);
+  render();
+  processConversation();
+}
 function stopNow(){if(finalText.trim())finishTurn();else{shouldKeepListening=false;if(recognition)try{recognition.stop()}catch(e){}status('Stopped.')}}
 function makeSession(){return 's'+Date.now().toString(36)+Math.random().toString(36).slice(2,10)}
 function jsonpRequest(params,timeoutMs=20000){return new Promise((resolve,reject)=>{const cb='mgVoiceCb_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7);let done=false;const script=document.createElement('script');const query=new URLSearchParams({...params,callback:cb});const timer=setTimeout(()=>finish(new Error('CRM request timed out.')),timeoutMs);function cleanup(){clearTimeout(timer);try{script.remove()}catch(e){}try{delete window[cb]}catch(e){window[cb]=undefined}}function finish(value,err){if(done)return;done=true;cleanup();err?reject(err):resolve(value)}window[cb]=data=>finish(data);script.onerror=()=>finish(null,new Error('Could not connect to MG RESALE.'));script.src=API+'?'+query.toString();document.head.appendChild(script)})}
@@ -92,8 +222,25 @@ async function processConversation(){if(!conversation.length)return;status('Conn
 function ask(text){questionText=text||'من فضلك اديني المعلومة الناقصة.';$('questionText').textContent=questionText;$('question').classList.remove('hidden');currentMode='answer';$('modeTitle').textContent='CRM Question';$('modeText').textContent='Listen to the question, then answer naturally.';speak(questionText,true)}
 function arabicQuestion(data){if(data.question)return data.question;if(data.type==='NEW_CLIENT_MISSING_DATA')return 'العميل جديد. محتاج اسم العميل ورقم الموبايل. قولهم لي من فضلك.';if(data.type==='SOURCE_REQUIRED')return 'العميل جديد. مصدر الليد إيه؟ Element، Direct، Adel، FB، Cold Call، ولا Refell؟';if(data.type==='CLIENT_NOT_FOUND')return 'مش قادر أحدد العميل. قول لي اسم العميل أو رقم الموبايل.';if(data.type==='MULTIPLE_CLIENTS')return 'فيه أكتر من عميل بنفس الاسم. قول لي رقم الموبايل.';return null}
 function handleResult(data){if(!data){showError('Empty response from CRM.');$('startBtn').disabled=false;return}if(data.success){conversation=[];finalText='';interimText='';$('question').classList.add('hidden');questionText='';currentMode='call';$('modeTitle').textContent='Saved';$('modeText').textContent='Feedback saved successfully. Ready for the next call.';render();status('Saved. Ready for the next call.');speak(data.message||'تم حفظ المكالمة بنجاح.',false);$('startBtn').disabled=false;return}const q=arabicQuestion(data);if(q){ask(q);return}showError(data.message||'CRM could not process the feedback.');$('startBtn').disabled=false;status('')}
-async function startSession(){clearError();if(!ctor()){showError('Speech Recognition is not available. Use recent Chrome or Edge.');return}voiceEnabled=true;startListening()}
-function reset(){shouldKeepListening=false;clearTimeout(silenceTimer);clearTimeout(restartTimer);if(recognition)try{recognition.abort()}catch(e){}try{speechSynthesis.cancel()}catch(e){}recognition=null;isListening=false;voiceEnabled=false;finalText='';interimText='';conversation=[];questionText='';currentMode='call';$('question').classList.add('hidden');$('startBtn').disabled=false;$('stopBtn').disabled=true;$('modeTitle').textContent='Ready';$('modeText').textContent='Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically.';render();status('Ready.');clearError()}
+async function startSession(){
+  clearError();
+  if(!ctor()){
+    showError('Speech Recognition is not available. Use recent Chrome or Edge.');
+    return;
+  }
+
+  try{
+    status('Enabling microphone...');
+    await startMicMonitor();
+    voiceEnabled=true;
+    startListening();
+  }catch(e){
+    voiceEnabled=false;
+    showError('Please allow microphone access for this GitHub Pages site.');
+    status('');
+  }
+}
+function reset(){shouldKeepListening=false;clearTimeout(silenceTimer);clearTimeout(restartTimer);stopMicMonitor();if(recognition)try{recognition.abort()}catch(e){}try{speechSynthesis.cancel()}catch(e){}recognition=null;isListening=false;voiceEnabled=false;finalText='';interimText='';conversation=[];questionText='';currentMode='call';$('question').classList.add('hidden');$('startBtn').disabled=false;$('stopBtn').disabled=true;$('modeTitle').textContent='Ready';$('modeText').textContent='Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically.';render();status('Ready.');clearError()}
 $('startBtn').onclick=startSession;$('stopBtn').onclick=stopNow;$('resetBtn').onclick=reset;
 </script>
 </body>
