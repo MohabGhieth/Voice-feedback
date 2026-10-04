@@ -36,8 +36,54 @@ function render(){const rows=conversation.slice();if(finalText.trim())rows.push(
 function ctor(){return window.SpeechRecognition||window.webkitSpeechRecognition||null}
 function arabicVoice(){if(!('speechSynthesis'in window))return null;return (speechSynthesis.getVoices()||[]).find(v=>/^ar(-|_)/i.test(v.lang||''))||null}
 function speak(text,listenAfter){if(!text)return;if(!('speechSynthesis'in window)){if(listenAfter)startListening();return}try{speechSynthesis.cancel()}catch(e){}const u=new SpeechSynthesisUtterance(text);u.lang='ar-EG';u.rate=.95;u.pitch=1;u.volume=1;const v=arabicVoice();if(v)u.voice=v;u.onstart=()=>{shouldKeepListening=false;status('CRM is speaking...')};u.onend=()=>{if(listenAfter&&voiceEnabled)setTimeout(startListening,350);else status('')};u.onerror=()=>{if(listenAfter&&voiceEnabled)setTimeout(startListening,350)};speechSynthesis.speak(u)}
-function buildRecognition(){const C=ctor();if(!C)return null;const r=new C();r.continuous=true;r.interimResults=true;r.maxAlternatives=1;r.lang='ar-EG';r.onstart=()=>{isListening=true;$('startBtn').disabled=true;$('stopBtn').disabled=false;status(currentMode==='answer'?'Listening for your answer...':'Listening... Speak naturally.')};r.onresult=e=>{interimText='';for(let i=e.resultIndex;i<e.results.length;i++){const x=e.results[i],t=x[0].transcript||'';if(x.isFinal)finalText+=t+' ';else interimText+=t}render();if((finalText+' '+interimText).trim()){clearTimeout(silenceTimer);silenceTimer=setTimeout(()=>{if(shouldKeepListening&&(finalText+' '+interimText).trim())finishTurn()},SILENCE_MS)}};r.onerror=e=>{const x=e?.error||'';if(x==='not-allowed'||x==='service-not-allowed'){shouldKeepListening=false;isListening=false;$('startBtn').disabled=false;$('stopBtn').disabled=true;showError('Microphone access was blocked by the browser. Check the GitHub Pages microphone permission.');return}if(shouldKeepListening)status('Reconnecting voice recognition...')};r.onend=()=>{const keep=shouldKeepListening;isListening=false;$('stopBtn').disabled=!keep;$('startBtn').disabled=!keep;if(keep){clearTimeout(restartTimer);restartTimer=setTimeout(()=>{if(!shouldKeepListening)return;try{recognition=buildRecognition();recognition.start()}catch(e){}},350)}};return r}
-function startListening(){clearError();if(!voiceEnabled){startSession();return}if(isListening)return;finalText='';interimText='';render();shouldKeepListening=true;try{recognition=buildRecognition();recognition.start()}catch(e){shouldKeepListening=false;showError('Could not start voice recognition. Press Start Voice again.')}}
+function buildRecognition(){const C=ctor();if(!C)return null;const r=new C();r.continuous=true;r.interimResults=true;r.maxAlternatives=1;r.lang='ar-EG';r.onstart=()=>{isListening=true;$('startBtn').disabled=true;$('stopBtn').disabled=false;status(currentMode==='answer'?'Listening for your answer...':'Listening... Speak naturally.')};r.onresult=e=>{interimText='';for(let i=e.resultIndex;i<e.results.length;i++){const x=e.results[i],t=x[0].transcript||'';if(x.isFinal)finalText+=t+' ';else interimText+=t}render();if((finalText+' '+interimText).trim()){clearTimeout(silenceTimer);silenceTimer=setTimeout(()=>{if(shouldKeepListening&&(finalText+' '+interimText).trim())finishTurn()},SILENCE_MS)}};r.onerror=e=>{const x=e?.error||'';if(x==='not-allowed'||x==='service-not-allowed'){shouldKeepListening=false;isListening=false;$('startBtn').disabled=false;$('stopBtn').disabled=true;showError('Microphone access was blocked by the browser. Check the GitHub Pages microphone permission.');return}if(shouldKeepListening)status('Reconnecting voice recognition...')};r.onend=()=>{
+  isListening=false;
+  $('stopBtn').disabled=!shouldKeepListening;
+  $('startBtn').disabled=shouldKeepListening;
+
+  // SpeechRecognition may end its internal session by itself.
+  // Rebuilding the recognition object here caused the repeated
+  // START -> STOP -> START -> STOP loop.
+  if(shouldKeepListening){
+    clearTimeout(restartTimer);
+    restartTimer=setTimeout(()=>{
+      if(!shouldKeepListening || isListening || requestBusy) return;
+      try{
+        if(!recognition) recognition=buildRecognition();
+        recognition.start();
+      }catch(e){
+        clearTimeout(restartTimer);
+        restartTimer=setTimeout(()=>{
+          if(!shouldKeepListening || isListening || requestBusy) return;
+          try{recognition.start()}catch(err){}
+        },700);
+      }
+    },700);
+  }else{
+    clearTimeout(silenceTimer);
+  }
+};
+return r}
+function startListening(){
+  clearError();
+  if(!voiceEnabled){startSession();return}
+  if(isListening)return;
+
+  // Fresh text buffer for every answer/turn.
+  // Keep the same SpeechRecognition instance instead of recreating it.
+  finalText='';
+  interimText='';
+  render();
+  shouldKeepListening=true;
+
+  try{
+    if(!recognition) recognition=buildRecognition();
+    recognition.start();
+  }catch(e){
+    shouldKeepListening=false;
+    showError('Could not start voice recognition. Press Start Voice again.');
+  }
+}
 function finishTurn(){shouldKeepListening=false;clearTimeout(silenceTimer);if(recognition)try{recognition.stop()}catch(e){}isListening=false;$('stopBtn').disabled=true;const t=(finalText+' '+interimText).trim();if(!t){$('startBtn').disabled=false;status('No speech detected.');return}conversation.push((currentMode==='answer'?'ANSWER: ':'FEEDBACK: ')+t);finalText='';interimText='';render();processConversation()}
 function stopNow(){if(finalText.trim())finishTurn();else{shouldKeepListening=false;if(recognition)try{recognition.stop()}catch(e){}status('Stopped.')}}
 function makeSession(){return 's'+Date.now().toString(36)+Math.random().toString(36).slice(2,10)}
