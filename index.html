@@ -34,6 +34,9 @@ const CHUNK_SIZE=3600;
 const CHUNK_CONCURRENCY=4;
 const TTS_SERVER_TIMEOUT_MS=900;
 const TTS_CACHE_LIMIT=40;
+const CRM_PROCESS_TIMEOUT_MS=12000;
+const CRM_POLL_DELAY_MS=1800;
+const CRM_POLL_ATTEMPTS=35;
 
 let recognition=null;
 let recognitionStartTimer=null;
@@ -971,6 +974,7 @@ async function processConversation(){
   window.__mgRequestBusy=true;
   $('startBtn').disabled=true;
   $('stopBtn').disabled=true;
+  clearError();
 
   const transcript=conversation.join('\n').trim();
 
@@ -983,7 +987,7 @@ async function processConversation(){
     return;
   }
 
-  status('خلصنا الكلام. براجع المكالمة وبجهّز بيانات الليد...');
+  status('خلصنا الكلام. بثبّت البيانات بسرعة...');
 
   const session=makeSession_();
   const chunks=[];
@@ -993,7 +997,7 @@ async function processConversation(){
   }
 
   try{
-    // Upload chunks concurrently instead of one-by-one.
+    // Upload chunks concurrently.
     for(let start=0; start<chunks.length; start+=CHUNK_CONCURRENCY){
       const batch=[];
       for(let i=start;i<Math.min(start+CHUNK_CONCURRENCY,chunks.length);i++){
@@ -1002,12 +1006,34 @@ async function processConversation(){
       await Promise.all(batch);
     }
 
-    status('تمام، الكلام وصل. بثبّت البيانات...');
+    status('الكلام وصل. براجع البيانات...');
 
-    let result=await jsonpRequest({api:'voiceProcess',session:session},30000);
-    if(result&&result.retry){
-      await new Promise(resolve=>setTimeout(resolve,250));
-      result=await jsonpRequest({api:'voiceProcess',session:session},30000);
+    // The Apps Script request can continue server-side even if the browser
+    // times out. The backend caches the final result by session, so polling
+    // the SAME session is safe and cannot create a duplicate lead/call.
+    let result=null;
+    for(let attempt=0; attempt<CRM_POLL_ATTEMPTS; attempt++){
+      try{
+        result=await jsonpRequest(
+          {api:'voiceProcess',session:session},
+          CRM_PROCESS_TIMEOUT_MS
+        );
+      }catch(e){
+        result={retry:true,processing:true,message:e.message||String(e)};
+      }
+
+      if(result && !result.retry) break;
+
+      if(attempt < CRM_POLL_ATTEMPTS-1){
+        status(attempt===0
+          ? 'ثواني... بكمّل الحفظ في الخلفية.'
+          : 'لسه بيثبّت البيانات...');
+        await new Promise(resolve=>setTimeout(resolve,CRM_POLL_DELAY_MS));
+      }
+    }
+
+    if(!result || result.retry){
+      throw new Error('CRM is still processing the call. Please wait a few seconds and try again.');
     }
 
     handleResult(result);
