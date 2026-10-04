@@ -130,27 +130,17 @@ function clearInactivityTimer_(){
 function armInactivityFallback_(){
   clearTimeout(inactivityTimer);
 
-  if(!shouldKeepListening || processing || !currentVoiceText_() || !lastSpeechAt){
-    return;
-  }
-
-  const elapsed=Date.now()-lastSpeechAt;
-  const wait=Math.max(250,SILENCE_MS-elapsed);
+  if(!shouldKeepListening || processing || !currentVoiceText_()) return;
 
   inactivityTimer=setTimeout(()=>{
     if(!shouldKeepListening || processing) return;
     if(!currentVoiceText_()) return;
 
-    const quietFor=Date.now()-lastSpeechAt;
-
-    // Any new recognition result updates lastSpeechAt and re-arms this timer.
-    if(quietFor<SILENCE_MS){
-      armInactivityFallback_();
-      return;
-    }
-
+    // If ANY new recognition result arrived, the timer is re-armed from onresult.
+    // This is deliberately independent of speechActive because Chromium can
+    // occasionally leave that flag stuck at true.
     finishTurn_('fallback-inactivity');
-  },wait);
+  },SILENCE_MS);
 }
 
 function clearTurnTimers_(){
@@ -224,10 +214,7 @@ function createRecognition_(){
     heardSpeech=true;
     lastSpeechAt=Date.now();
     clearTimeout(silenceTimer);
-    // DO NOT cancel the inactivity fallback here.
-    // New recognition results re-arm it; this guarantees processing even if
-    // Chromium fails to emit speechend/soundend.
-    armInactivityFallback_();
+    clearInactivityTimer_();
     status(currentMode==='answer' ? 'تمام، رد براحتك...' : 'تمام، كمّل براحتك...');
   };
 
@@ -237,7 +224,7 @@ function createRecognition_(){
     heardSpeech=true;
     lastSpeechAt=Date.now();
     clearTimeout(silenceTimer);
-    armInactivityFallback_();
+    clearInactivityTimer_();
   };
 
   r.onresult=e=>{
@@ -260,10 +247,15 @@ function createRecognition_(){
     heardSpeech=true;
     lastSpeechAt=Date.now();
     clearTimeout(silenceTimer);
+
+    if(currentMode==='call' && !phoneMode){
+      correctedLiveText=localCorrectLive_(currentVoiceText_());
+    }
+
     render();
 
-    // Every recognition result is the heartbeat. Three seconds after the LAST
-    // result, the turn is finalized if no newer result arrives.
+    // Fallback for Chromium builds that do not reliably fire speechend/soundend.
+    // Any new result resets the 3-second deadline.
     armInactivityFallback_();
 
     if(newestFinal && currentMode==='call' && !phoneMode){
@@ -457,6 +449,9 @@ function finishTurn_(reason){
 
   $('startBtn').disabled=true;
   $('stopBtn').disabled=true;
+  status(reason==='manual'
+    ? 'خلصت التسجيل. بجهّز المكالمة للحفظ...'
+    : 'خلصنا الكلام. بجهّز المكالمة للحفظ...');
 
   if(!t){
     processing=false;
@@ -474,8 +469,6 @@ function finishTurn_(reason){
       phoneAttempts++;
       turnFinal='';
       turnInterim='';
-      lastSpeechAt=0;
-      clearTurnTimers_();
       $('questionText').textContent='الرقم مش واضح أو ناقص. قول رقم الموبايل رقم رقم، من فضلك.';
       render();
       speak('الرقم مش واضح أو ناقص. قول رقم الموبايل رقم رقم، من فضلك.',true);
@@ -558,16 +551,25 @@ async function sendConversationChunk_(session,index,total,text){
 
 async function processConversation(){
   if(!conversation.length) return;
-
-  // Separate lock so an old response cannot trigger duplicate processing.
   if(window.__mgRequestBusy) return;
-  window.__mgRequestBusy=true;
 
+  window.__mgRequestBusy=true;
   $('startBtn').disabled=true;
   $('stopBtn').disabled=true;
-  status('ببعت الكلام للـCRM...');
 
-  const transcript=conversation.join('\\n');
+  const transcript=conversation.join('\n').trim();
+
+  if(!transcript){
+    window.__mgRequestBusy=false;
+    processing=false;
+    $('startBtn').disabled=false;
+    showError('مفيش قصة كاملة جاهزة للحفظ.');
+    status('');
+    return;
+  }
+
+  status('خلصنا الكلام. براجع المكالمة وبجهّز بيانات الليد...');
+
   const session=makeSession_();
   const chunks=[];
 
@@ -580,10 +582,25 @@ async function processConversation(){
       await sendConversationChunk_(session,i,chunks.length,chunks[i]);
     }
 
-    const result=await jsonpRequest({
-      api:'voiceProcess',
-      session:session
-    },30000);
+    let result=null;
+
+    // The Apps Script cache may need a moment to expose all chunks.
+    for(let attempt=0;attempt<6;attempt++){
+      result=await jsonpRequest({
+        api:'voiceProcess',
+        session:session
+      },45000);
+
+      if(result && result.retry){
+        status('استلمت الكلام. بثبّت البيانات وببدأ التحليل...');
+        await new Promise(function(resolve){
+          setTimeout(resolve,400+attempt*250);
+        });
+        continue;
+      }
+
+      break;
+    }
 
     handleResult(result);
   }catch(e){
@@ -652,30 +669,28 @@ async function correctAnswerContext_(raw){
   }
 }
 
+const LIVE_ALIASES_=[
+  [/\bup\s*to\s*one\b/gi,'Uptown Cairo'],
+  [/\bup\s*town\b/gi,'Uptown Cairo'],
+  [/\bstand\s*alone\b/gi,'Standalone'],
+  [/\bcold\s*call\b/gi,'Cold Call'],
+  [/جروفا|جرووفا|جروبا|برووفا|بروبا/gi,'Groova'],
+  [/ميفيدا|ميڤيدا/gi,'Mivida'],
+  [/المنت|اليمنت/gi,'Element'],
+  [/البروكس|برووكس/gi,'The Brooks'],
+  [/هايد\s*بارك|هايدبارك/gi,'Hyde Park']
+];
+
+function localCorrectLive_(text){
+  let s=String(text||'').trim();
+  LIVE_ALIASES_.forEach(function(pair){ s=s.replace(pair[0],pair[1]); });
+  return s;
+}
+
 function queueLiveCorrection_(segment){
-  clearTimeout(liveCorrectionTimer);
-
-  const text=String(segment||'').trim();
-  if(!text || currentMode!=='call' || phoneMode) return;
-
-  const seq=++liveCorrectionSeq;
-
-  liveCorrectionTimer=setTimeout(async()=>{
-    try{
-      const data=await jsonpRequest({
-        api:'voiceCorrect',
-        text:text
-      },12000);
-
-      if(seq!==liveCorrectionSeq) return;
-
-      // Do NOT block or replace the story while recording.
-      // Final AI correction happens server-side on save.
-      if(data && data.success && data.corrected){
-        status('براجع الكلام وانا سامعك...');
-      }
-    }catch(e){}
-  },500);
+  if(currentMode!=='call' || phoneMode) return;
+  correctedLiveText=localCorrectLive_(currentVoiceText_());
+  render();
 }
 
 function arabicQuestion(data){
