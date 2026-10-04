@@ -13,7 +13,7 @@
 <main class="app">
 <div class="brand"><h1>MG RESALE</h1><p>Voice Mode — Final</p></div>
 <section class="card">
-<div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. After 3 seconds of real silence, the CRM processes your turn automatically.</span></div>
+<div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically and keeps your full paragraph.</span></div>
 <div id="question" class="question hidden"><small>CRM asks:</small><strong id="questionText"></strong></div>
 <div id="transcript" class="transcript">No speech captured yet.</div>
 <div class="buttons">
@@ -46,6 +46,7 @@ let heardSpeech=false;
 let lastSpeechAt=0;
 
 let silenceTimer=null;
+let inactivityTimer=null;
 let restartTimer=null;
 let phoneMode=false;
 let phoneAttempts=0;
@@ -120,9 +121,32 @@ function speak(text,listenAfter){
   speechSynthesis.speak(u);
 }
 
+
+function clearInactivityTimer_(){
+  clearTimeout(inactivityTimer);
+  inactivityTimer=null;
+}
+
+function armInactivityFallback_(){
+  clearTimeout(inactivityTimer);
+
+  if(!shouldKeepListening || processing || !currentVoiceText_()) return;
+
+  inactivityTimer=setTimeout(()=>{
+    if(!shouldKeepListening || processing) return;
+    if(!currentVoiceText_()) return;
+
+    // If ANY new recognition result arrived, the timer is re-armed from onresult.
+    // This is deliberately independent of speechActive because Chromium can
+    // occasionally leave that flag stuck at true.
+    finishTurn_('fallback-inactivity');
+  },SILENCE_MS);
+}
+
 function clearTurnTimers_(){
   clearTimeout(silenceTimer);
   silenceTimer=null;
+  clearInactivityTimer_();
   clearTimeout(restartTimer);
   restartTimer=null;
 }
@@ -190,6 +214,7 @@ function createRecognition_(){
     heardSpeech=true;
     lastSpeechAt=Date.now();
     clearTimeout(silenceTimer);
+    clearInactivityTimer_();
     status(currentMode==='answer' ? 'تمام، رد براحتك...' : 'تمام، كمّل براحتك...');
   };
 
@@ -199,6 +224,7 @@ function createRecognition_(){
     heardSpeech=true;
     lastSpeechAt=Date.now();
     clearTimeout(silenceTimer);
+    clearInactivityTimer_();
   };
 
   r.onresult=e=>{
@@ -223,6 +249,10 @@ function createRecognition_(){
     clearTimeout(silenceTimer);
     render();
 
+    // Fallback for Chromium builds that do not reliably fire speechend/soundend.
+    // Any new result resets the 3-second deadline.
+    armInactivityFallback_();
+
     if(newestFinal && currentMode==='call' && !phoneMode){
       queueLiveCorrection_(newestFinal);
     }
@@ -231,13 +261,19 @@ function createRecognition_(){
   r.onspeechend=()=>{
     speechActive=false;
     lastSpeechAt=Date.now();
-    if(shouldKeepListening && currentVoiceText_()) scheduleRealSilence_();
+    if(shouldKeepListening && currentVoiceText_()){
+      scheduleRealSilence_();
+      armInactivityFallback_();
+    }
   };
 
   r.onsoundend=()=>{
     speechActive=false;
     lastSpeechAt=Date.now();
-    if(shouldKeepListening && currentVoiceText_()) scheduleRealSilence_();
+    if(shouldKeepListening && currentVoiceText_()){
+      scheduleRealSilence_();
+      armInactivityFallback_();
+    }
   };
 
   r.onaudioend=()=>{
@@ -279,10 +315,12 @@ function createRecognition_(){
     if(phoneMode && shouldKeepListening && currentVoiceText_()){
       speechActive=false;
       scheduleRealSilence_();
+      armInactivityFallback_();
       return;
     }
 
     if(shouldKeepListening && !processing){
+      if(currentVoiceText_()) armInactivityFallback_();
       clearTimeout(restartTimer);
 
       restartTimer=setTimeout(()=>{
@@ -393,6 +431,8 @@ function finishTurn_(reason){
   isListening=false;
   speechActive=false;
   clearTurnTimers_();
+  clearTimeout(liveCorrectionTimer);
+  liveCorrectionSeq++;
 
   try{ if(recognition) recognition.abort(); }catch(e){}
 
@@ -419,7 +459,9 @@ function finishTurn_(reason){
     if(!validEgyptianMobileDigits_(digits)){
       processing=false;
       phoneAttempts++;
-      $('questionText').textContent='الرقم مش واضح أو ناقص. قول رقم الموبايل رقم رقم.';
+      turnFinal='';
+      turnInterim='';
+      $('questionText').textContent='الرقم مش واضح أو ناقص. قول رقم الموبايل رقم رقم، من فضلك.';
       render();
       speak('الرقم مش واضح أو ناقص. قول رقم الموبايل رقم رقم، من فضلك.',true);
       return;
@@ -761,7 +803,7 @@ function reset(){
   $('stopBtn').disabled=true;
 
   $('modeTitle').textContent='Ready';
-  $('modeText').textContent='Tap Start Voice once. Speak naturally. After 3 seconds of real silence, the CRM processes your turn automatically.';
+  $('modeText').textContent='Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically and keeps your full paragraph.';
 
   render();
   status('Ready.');
