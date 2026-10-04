@@ -13,7 +13,7 @@
 <main class="app">
 <div class="brand"><h1>MG RESALE</h1><p>Voice Mode — Final</p></div>
 <section class="card">
-<div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically and keeps your full paragraph.</span></div>
+<div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. The Story never auto-finishes. Press Finish & Save only when you are completely done.</span></div>
 <div id="question" class="question hidden"><small>CRM asks:</small><strong id="questionText"></strong></div>
 <div id="transcript" class="transcript">No speech captured yet.</div>
 <div class="buttons">
@@ -22,12 +22,15 @@
 <button id="resetBtn" class="reset" type="button">↺ Reset</button>
 </div>
 <div id="status" class="status"></div><div id="error" class="error hidden"></div>
-<div class="tip">One page only. No popup. GitHub Pages owns Speech Recognition; Apps Script owns CRM/Gemini/Sheets. Live speech and AI correction stay visible while you speak.</div>
+<div class="tip">One page only. No popup. GitHub Pages owns Speech Recognition; Apps Script owns CRM/Gemini/Sheets. During the Story, the system only listens and collects. Gemini/CRM questions start only after you press Finish &amp; Save.</div>
 </section>
 </main>
 <script>
 const API='https://script.google.com/macros/s/AKfycbyawltTbaWy291FyF95S0GX6oIlnoac5FzDVxFdDSqUG3VyRoTItG4Mj8zZolxRN_GIjw/exec';
 const SILENCE_MS=3000;
+// Story mode is NEVER auto-submitted on silence. The salesperson controls
+// the end of the story with Finish & Save. Silence is allowed inside a story.
+const CALL_STORY_AUTO_FINISH=false;
 const ANSWER_SILENCE_MS=15000;
 const PHONE_SILENCE_MS=15000;
 const CHUNK_SIZE=3600;
@@ -50,6 +53,7 @@ let processing=false;
 let currentMode='call';
 let questionText='';
 let conversation=[];
+let savedFeedbackText='';
 
 let turnFinal='';
 let turnInterim='';
@@ -74,9 +78,6 @@ let restartTimer=null;
 let phoneMode=false;
 let phoneAttempts=0;
 
-let liveCorrectionTimer=null;
-let liveCorrectionSeq=0;
-let correctedLiveText='';
 let newLeadIntroPending=false;
 let questionIntroPlayed=false;
 let ttsCache=new Map();
@@ -152,18 +153,22 @@ function render(){
     .map(formatConversationLine_)
     .filter(Boolean);
 
-  const live=currentVoiceText_();
-  if(live) rows.push('VOICE (LIVE): '+live);
+  // The previous saved call is shown only in Saved state. It is cleared
+  // immediately when the next Story starts, so old feedback can never leak
+  // into a new call.
+  if(savedFeedbackText){
+    rows.push('FEEDBACK (SAVED): '+savedFeedbackText);
+  }
 
-  if(correctedLiveText && correctedLiveText!==live){
-    rows.push('AI CORRECTED (LIVE): '+correctedLiveText);
+  const live=currentVoiceText_();
+  if(live){
+    rows.push((currentMode==='call' ? 'STORY (LIVE): ' : 'ANSWER (LIVE): ')+live);
   }
 
   $('transcript').textContent=rows.length
     ? rows.join('\n\n')
     : 'No speech captured yet.';
 }
-
 function ctor(){
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 }
@@ -250,7 +255,7 @@ async function startVAD_(){
         clearTimeout(inactivityTimer);
       }
 
-      if(shouldKeepListening && !processing && !vadSuppressed && currentVoiceText_() && lastAudibleAt){
+      if(CALL_STORY_AUTO_FINISH && shouldKeepListening && !processing && !vadSuppressed && currentMode!=='call' && currentVoiceText_() && lastAudibleAt){
         if(Date.now()-lastAudibleAt >= activeSilenceMs_()){
           finishTurn_('real-microphone-silence');
           return;
@@ -451,6 +456,8 @@ function scheduleRealSilence_(){
   clearTimeout(silenceTimer);
 
   if(!shouldKeepListening || processing) return;
+  // In the initial story phase, silence is not an answer boundary.
+  if(currentMode==='call' && !CALL_STORY_AUTO_FINISH) return;
 
   const text=currentVoiceText_();
 
@@ -622,7 +629,7 @@ function createRecognition_(){
 
     status(currentMode==='answer'
       ? 'Listening for your answer... خد وقتك، وأنا مستنيك تخلص.'
-      : 'Listening... Speak naturally.');
+      : 'Listening... اتكلم براحتك. أنا مش هوقف الـstory بسبب أي سكتة. لما تخلص اضغط Finish & Save.');
   };
 
   r.onresult=e=>{
@@ -649,22 +656,14 @@ function createRecognition_(){
     lastSpeechAt=Date.now();
     clearTimeout(silenceTimer);
 
-    // Live canonicalization is local/non-blocking.
-    if(currentMode==='call' && !phoneMode){
-      const raw=currentVoiceText_();
-      const corrected=localCorrectLive_(raw);
-      correctedLiveText=(corrected!==raw) ? corrected : '';
-    }
-
+    // During the initial Story there is NO correction, Gemini call, or CRM
+    // decision-making. The transcript is collected exactly as speech arrives.
+    // Correction/extraction happens only after the user presses Finish & Save.
     render();
 
     // Silence starts only AFTER actual recognition text exists.
     scheduleRealSilence_();
 
-    // Do not make a network call while the user is still talking.
-    if(newestFinal && currentMode==='call' && !phoneMode){
-      queueLiveCorrection_(newestFinal);
-    }
   };
 
   r.onspeechstart=()=>{
@@ -679,7 +678,7 @@ function createRecognition_(){
   r.onspeechend=()=>{
     speechActive=false;
     if(shouldKeepListening && currentVoiceText_()){
-      scheduleRealSilence_();
+      if(currentMode!=='call' || CALL_STORY_AUTO_FINISH) scheduleRealSilence_();
     }
   };
 
@@ -692,7 +691,7 @@ function createRecognition_(){
   r.onsoundend=()=>{
     speechActive=false;
     if(shouldKeepListening && currentVoiceText_()){
-      scheduleRealSilence_();
+      if(currentMode!=='call' || CALL_STORY_AUTO_FINISH) scheduleRealSilence_();
     }
   };
 
@@ -757,16 +756,11 @@ function startListening_(newTurn){
   if(newTurn){
     turnFinal='';
     turnInterim='';
-    correctedLiveText='';
-    speechActive=false;
+      speechActive=false;
     heardSpeech=false;
     lastSpeechAt=0;
     lastAudibleAt=0;
     phoneAttempts=0;
-
-    if(currentMode==='call'){
-      liveCorrectionSeq++;
-    }
 
     render();
   }
@@ -780,7 +774,7 @@ function startListening_(newTurn){
 
   status(currentMode==='answer'
     ? 'Listening for your answer... خد وقتك، وأنا مستنيك تخلص.'
-    : 'Listening... Speak naturally.');
+    : 'Listening... اتكلم براحتك. أنا مش هوقف الـstory بسبب أي سكتة. لما تخلص اضغط Finish & Save.');
 
   // SpeechRecognition is the only active microphone consumer.
   try{
@@ -819,12 +813,19 @@ function startSession(){
   questionText='';
   questionIntroPlayed=false;
 
+  // Every Start Voice begins a brand-new Story. Never carry the previous
+  // saved feedback into the next call UI or transcript.
+  conversation=[];
+  savedFeedbackText='';
+  turnFinal='';
+  turnInterim='';
+
   $('startBtn').disabled=true;
   $('stopBtn').disabled=true;
 
   $('modeTitle').textContent='Starting';
-  $('modeText').textContent='سامعك. اتكلم براحتك، وأنا هجمع القصة كلها قبل ما أحفظها.';
-  status('ببدأ التسجيل...');
+  $('modeText').textContent='سامعك. اتكلم براحتك، وأنا هجمع الـstory كلها. مش هسألك أي سؤال أثناء الـstory. لما تخلص اضغط Finish & Save.';
+  status('ببدأ التسجيل... اتكلم براحتك، وأنا مستنيك تخلص الـstory.');
 
   // Reset the startup-attempt counter for this manual Start.
   clearRecognitionWatchdogs_();
@@ -851,6 +852,9 @@ function startSession(){
 
 function finishTurn_(reason){
   if(processing) return;
+  // Initial call story is intentionally submitted only by Finish & Save.
+  // Never let silence or a phone mention turn the story into a CRM question.
+  if(currentMode==='call' && reason!=='manual') return;
 
   processing=true;
   shouldKeepListening=false;
@@ -859,8 +863,6 @@ function finishTurn_(reason){
   clearTurnTimers_();
   clearRecognitionWatchdogs_();
   stopMicPreflight_();
-  clearTimeout(liveCorrectionTimer);
-  liveCorrectionSeq++;
 
   try{ if(recognition) recognition.abort(); }catch(e){}
 
@@ -873,8 +875,8 @@ function finishTurn_(reason){
   $('startBtn').disabled=true;
   $('stopBtn').disabled=true;
   status(reason==='manual'
-    ? (phoneMode ? 'خلصت الرقم. بتأكد منه...' : 'خلصت التسجيل. بجهّز المكالمة للحفظ...')
-    : (phoneMode ? 'خلصت الرقم. بتأكد منه...' : 'خلصنا الكلام. بجهّز المكالمة للحفظ...'));
+    ? (phoneMode ? 'خلصت الرقم. بتأكد منه...' : 'خلصت الـstory. بجهّز المكالمة للحفظ...')
+    : (phoneMode ? 'خلصت الرقم. بتأكد منه...' : 'بجهّز المكالمة للحفظ...'));
 
   if(!t){
     processing=false;
@@ -1170,17 +1172,6 @@ const LIVE_ALIASES_=[
   [/هايد\s*بارك|هايدبارك/gi,'Hyde Park']
 ];
 
-function localCorrectLive_(text){
-  let s=String(text||'').trim();
-  LIVE_ALIASES_.forEach(function(pair){ s=s.replace(pair[0],pair[1]); });
-  return s;
-}
-
-function queueLiveCorrection_(segment){
-  if(currentMode!=='call' || phoneMode) return;
-  correctedLiveText=localCorrectLive_(currentVoiceText_());
-  render();
-}
 
 function arabicQuestion(data){
   // For new leads, never let Gemini invent the wording of the missing-field prompt.
@@ -1230,10 +1221,8 @@ function handleResult(data){
     $('modeTitle').textContent='Saved';
     $('modeText').textContent='تم حفظ وتصحيح قصة المكالمة. جاهز للمكالمة اللي بعدها.';
 
-    conversation=data.feedback
-      ? ['CORRECTED FEEDBACK: '+data.feedback]
-      : [];
-
+    savedFeedbackText=data.feedback ? String(data.feedback) : '';
+    conversation=[];
     render();
     status('تمام، المكالمة اتحفظت. جاهز للمكالمة اللي بعدها.');
     speak(data.message||'تم حفظ المكالمة بنجاح.',false);
@@ -1314,7 +1303,6 @@ function reset(){
   window.__mgRequestBusy=false;
   window.__mgStartBusy=false;
   clearTurnTimers_();
-  clearTimeout(liveCorrectionTimer);
 
   try{if(recognition) recognition.abort();}catch(e){}
   try{speechSynthesis.cancel();}catch(e){}
@@ -1333,6 +1321,7 @@ function reset(){
   lastSpeechAt=0;
 
   conversation=[];
+  savedFeedbackText='';
   questionText='';
   currentMode='call';
   phoneMode=false;
@@ -1345,7 +1334,7 @@ function reset(){
   $('stopBtn').disabled=true;
 
   $('modeTitle').textContent='Ready';
-  $('modeText').textContent='Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically and keeps your full paragraph.';
+  $('modeText').textContent='Tap Start Voice once. Speak naturally. The Story does NOT auto-finish and does NOT ask CRM questions while you speak. When you are completely finished, press Finish & Save.';
 
   render();
   status('Ready.');
