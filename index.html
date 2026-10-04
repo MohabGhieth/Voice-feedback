@@ -33,10 +33,6 @@ const PHONE_SILENCE_MS=15000;
 const CHUNK_SIZE=900;
 
 let recognition=null;
-let recognitionStartTimer=null;
-let recognitionStartAttempts=0;
-let recognitionRestartTimer=null;
-let micPreflightStream=null;
 let voiceEnabled=false;
 let shouldKeepListening=false;
 let isListening=false;
@@ -70,6 +66,7 @@ let phoneAttempts=0;
 
 let liveCorrectionTimer=null;
 let liveCorrectionSeq=0;
+let correctedLiveText='';
 let newLeadIntroPending=false;
 let questionIntroPlayed=false;
 
@@ -363,123 +360,6 @@ function scheduleRealSilence_(){
   },Math.max(350,ms-elapsed));
 }
 
-
-
-async function preflightMicrophone_(){
-  // Do a real browser permission/capability check first. This stream is
-  // immediately closed and is NEVER used concurrently with SpeechRecognition.
-  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-    throw new Error('This browser does not expose microphone access to the page.');
-  }
-
-  try{
-    micPreflightStream=await navigator.mediaDevices.getUserMedia({
-      audio:{
-        echoCancellation:true,
-        noiseSuppression:true,
-        autoGainControl:true
-      },
-      video:false
-    });
-
-    // Permission is now proven. Release the stream before SpeechRecognition
-    // starts so there is exactly one live microphone consumer.
-    micPreflightStream.getTracks().forEach(t=>t.stop());
-    micPreflightStream=null;
-
-    return true;
-  }catch(err){
-    if(micPreflightStream){
-      try{ micPreflightStream.getTracks().forEach(t=>t.stop()); }catch(e){}
-      micPreflightStream=null;
-    }
-
-    const name=String(err?.name||'');
-    if(name==='NotAllowedError' || name==='SecurityError'){
-      throw new Error('Microphone permission is blocked for this site. Allow the microphone for GitHub Pages and try again.');
-    }
-    if(name==='NotFoundError'){
-      throw new Error('No microphone was found on this device.');
-    }
-    if(name==='NotReadableError'){
-      throw new Error('The microphone is busy or unavailable. Close other apps using the microphone and try again.');
-    }
-    throw new Error('Microphone check failed: '+(err?.message||name||'unknown error'));
-  }
-}
-
-function stopMicPreflight_(){
-  if(micPreflightStream){
-    try{ micPreflightStream.getTracks().forEach(t=>t.stop()); }catch(e){}
-    micPreflightStream=null;
-  }
-}
-
-function clearRecognitionWatchdogs_(){
-  clearTimeout(recognitionStartTimer);
-  recognitionStartTimer=null;
-  clearTimeout(recognitionRestartTimer);
-  recognitionRestartTimer=null;
-  stopMicPreflight_();
-}
-
-function scheduleRecognitionRestart_(reason){
-  if(!shouldKeepListening || processing) return;
-
-  clearTimeout(recognitionRestartTimer);
-
-  recognitionRestartTimer=setTimeout(()=>{
-    if(!shouldKeepListening || processing || isListening) return;
-
-    try{ if(recognition) recognition.abort(); }catch(e){}
-
-    status(reason || 'Restarting Speech Recognition...');
-
-    try{
-      recognition=createRecognition_();
-      recognition.start();
-      armRecognitionStartWatchdog_();
-    }catch(e){
-      scheduleRecognitionRestart_('Speech Recognition retrying...');
-    }
-  },450);
-}
-
-function armRecognitionStartWatchdog_(){
-  clearTimeout(recognitionStartTimer);
-
-  recognitionStartTimer=setTimeout(()=>{
-    if(!shouldKeepListening || processing || isListening) return;
-
-    recognitionStartAttempts++;
-
-    try{ if(recognition) recognition.abort(); }catch(e){}
-
-    if(recognitionStartAttempts>=4){
-      shouldKeepListening=false;
-      isListening=false;
-      clearRecognitionWatchdogs_();
-
-      $('startBtn').disabled=false;
-      $('stopBtn').disabled=true;
-
-      showError(
-        'Speech Recognition did not start. The browser voice service is not responding. '+
-        'Please reload the page and press Start Voice once.'
-      );
-      status('');
-      return;
-    }
-
-    status(
-      'Speech Recognition did not start. Retrying automatically ('+
-      recognitionStartAttempts+'/4)...'
-    );
-
-    scheduleRecognitionRestart_('Retrying Speech Recognition...');
-  },4000);
-}
-
 function createRecognition_(){
   const C=ctor();
   if(!C) throw new Error('Speech Recognition is not available. Use current Chrome or Edge.');
@@ -494,8 +374,6 @@ function createRecognition_(){
   r.lang='ar-EG';
 
   r.onstart=()=>{
-    clearRecognitionWatchdogs_();
-    recognitionStartAttempts=0;
     isListening=true;
     $('startBtn').disabled=true;
     $('stopBtn').disabled=false;
@@ -621,10 +499,36 @@ function createRecognition_(){
   r.onend=()=>{
     isListening=false;
 
-    // onend is not the end of the user turn. Chromium can rotate the service.
-    // Restart the same recognition turn and keep all collected text.
+    // Never finalize from onend. A normal Chrome recognition restart must
+    // continue the same turn.
     if(shouldKeepListening && !processing){
-      scheduleRecognitionRestart_('Speech Recognition restarting...');
+      clearTimeout(restartTimer);
+
+      restartTimer=setTimeout(()=>{
+        if(!shouldKeepListening || processing || isListening) return;
+
+        try{
+          recognition=createRecognition_();
+          recognition.start();
+        }catch(e){
+          clearTimeout(restartTimer);
+
+          restartTimer=setTimeout(()=>{
+            if(!shouldKeepListening || processing || isListening) return;
+
+            try{
+              recognition=createRecognition_();
+              recognition.start();
+            }catch(err){
+              shouldKeepListening=false;
+              $('startBtn').disabled=false;
+              $('stopBtn').disabled=true;
+              showError('Speech Recognition could not restart. Press Start Voice once again.');
+              status('');
+            }
+          },700);
+        }
+      },180);
     }
   };
 
@@ -645,6 +549,7 @@ function startListening_(newTurn){
   if(newTurn){
     turnFinal='';
     turnInterim='';
+    correctedLiveText='';
     speechActive=false;
     heardSpeech=false;
     lastSpeechAt=0;
@@ -673,11 +578,9 @@ function startListening_(newTurn){
   try{
     recognition=createRecognition_();
     recognition.start();
-    armRecognitionStartWatchdog_();
   }catch(e){
     shouldKeepListening=false;
     isListening=false;
-    clearRecognitionWatchdogs_();
     $('startBtn').disabled=false;
     $('stopBtn').disabled=true;
     showError('Could not start Speech Recognition: '+(e.message||String(e)));
@@ -688,52 +591,21 @@ function startListening_(newTurn){
 function startSession(){
   clearError();
 
-  const C=ctor();
-
-  if(!C){
+  if(!ctor()){
     showError('Speech Recognition is not available in this browser. Use current Chrome or Edge.');
     return;
   }
-
-  // IMPORTANT: start SpeechRecognition directly from the button click.
-  // Do not await getUserMedia or any network operation first; keep the browser
-  // user-gesture context intact.
-  if(window.__mgStartBusy) return;
-  window.__mgStartBusy=true;
 
   voiceEnabled=true;
   currentMode='call';
   questionText='';
   questionIntroPlayed=false;
 
-  $('startBtn').disabled=true;
-  $('stopBtn').disabled=true;
-
-  $('modeTitle').textContent='Starting';
+  $('modeTitle').textContent='Listening';
   $('modeText').textContent='سامعك. اتكلم براحتك، وأنا هجمع القصة كلها قبل ما أحفظها.';
   status('Starting Speech Recognition...');
 
-  // Reset the startup-attempt counter for this manual Start.
-  clearRecognitionWatchdogs_();
-  recognitionStartAttempts=0;
-
-  try{
-    // This call happens synchronously in the button's click handler.
-    startListening_(true);
-  }catch(err){
-    voiceEnabled=false;
-    shouldKeepListening=false;
-    processing=false;
-    clearRecognitionWatchdogs_();
-
-    $('startBtn').disabled=false;
-    $('stopBtn').disabled=true;
-
-    showError('Could not start Speech Recognition: '+(err?.message||String(err)));
-    status('');
-  }finally{
-    window.__mgStartBusy=false;
-  }
+  startListening_(true);
 }
 
 function finishTurn_(reason){
@@ -744,8 +616,6 @@ function finishTurn_(reason){
   isListening=false;
   speechActive=false;
   clearTurnTimers_();
-  clearRecognitionWatchdogs_();
-  stopMicPreflight_();
   clearTimeout(liveCorrectionTimer);
   liveCorrectionSeq++;
 
@@ -1181,7 +1051,6 @@ function reset(){
   shouldKeepListening=false;
   processing=false;
   window.__mgRequestBusy=false;
-  window.__mgStartBusy=false;
   clearTurnTimers_();
   clearTimeout(liveCorrectionTimer);
 
@@ -1190,8 +1059,6 @@ function reset(){
   stopVAD_();
 
   recognition=null;
-  clearRecognitionWatchdogs_();
-  recognitionStartAttempts=0;
   voiceEnabled=false;
   isListening=false;
 
