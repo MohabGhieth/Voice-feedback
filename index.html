@@ -36,6 +36,7 @@ let recognition=null;
 let recognitionStartTimer=null;
 let recognitionStartAttempts=0;
 let recognitionRestartTimer=null;
+let micPreflightStream=null;
 let voiceEnabled=false;
 let shouldKeepListening=false;
 let isListening=false;
@@ -363,11 +364,63 @@ function scheduleRealSilence_(){
 }
 
 
+
+async function preflightMicrophone_(){
+  // Do a real browser permission/capability check first. This stream is
+  // immediately closed and is NEVER used concurrently with SpeechRecognition.
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    throw new Error('This browser does not expose microphone access to the page.');
+  }
+
+  try{
+    micPreflightStream=await navigator.mediaDevices.getUserMedia({
+      audio:{
+        echoCancellation:true,
+        noiseSuppression:true,
+        autoGainControl:true
+      },
+      video:false
+    });
+
+    // Permission is now proven. Release the stream before SpeechRecognition
+    // starts so there is exactly one live microphone consumer.
+    micPreflightStream.getTracks().forEach(t=>t.stop());
+    micPreflightStream=null;
+
+    return true;
+  }catch(err){
+    if(micPreflightStream){
+      try{ micPreflightStream.getTracks().forEach(t=>t.stop()); }catch(e){}
+      micPreflightStream=null;
+    }
+
+    const name=String(err?.name||'');
+    if(name==='NotAllowedError' || name==='SecurityError'){
+      throw new Error('Microphone permission is blocked for this site. Allow the microphone for GitHub Pages and try again.');
+    }
+    if(name==='NotFoundError'){
+      throw new Error('No microphone was found on this device.');
+    }
+    if(name==='NotReadableError'){
+      throw new Error('The microphone is busy or unavailable. Close other apps using the microphone and try again.');
+    }
+    throw new Error('Microphone check failed: '+(err?.message||name||'unknown error'));
+  }
+}
+
+function stopMicPreflight_(){
+  if(micPreflightStream){
+    try{ micPreflightStream.getTracks().forEach(t=>t.stop()); }catch(e){}
+    micPreflightStream=null;
+  }
+}
+
 function clearRecognitionWatchdogs_(){
   clearTimeout(recognitionStartTimer);
   recognitionStartTimer=null;
   clearTimeout(recognitionRestartTimer);
   recognitionRestartTimer=null;
+  stopMicPreflight_();
 }
 
 function scheduleRecognitionRestart_(reason){
@@ -624,6 +677,7 @@ function startListening_(newTurn){
   }catch(e){
     shouldKeepListening=false;
     isListening=false;
+    clearRecognitionWatchdogs_();
     $('startBtn').disabled=false;
     $('stopBtn').disabled=true;
     showError('Could not start Speech Recognition: '+(e.message||String(e)));
@@ -631,7 +685,7 @@ function startListening_(newTurn){
   }
 }
 
-function startSession(){
+async function startSession(){
   clearError();
 
   if(!ctor()){
@@ -639,16 +693,45 @@ function startSession(){
     return;
   }
 
+  if(window.__mgStartBusy) return;
+  window.__mgStartBusy=true;
+
   voiceEnabled=true;
   currentMode='call';
   questionText='';
   questionIntroPlayed=false;
 
-  $('modeTitle').textContent='Listening';
-  $('modeText').textContent='سامعك. اتكلم براحتك، وأنا هجمع القصة كلها قبل ما أحفظها.';
-  status('Starting Speech Recognition...');
+  $('startBtn').disabled=true;
+  $('stopBtn').disabled=true;
 
-  startListening_(true);
+  $('modeTitle').textContent='Starting';
+  $('modeText').textContent='بتأكد الأول إن الميكروفون شغال، وبعدها هبدأ التسجيل.';
+  status('Checking microphone permission...');
+
+  try{
+    await preflightMicrophone_();
+
+    if(!voiceEnabled){
+      return;
+    }
+
+    status('Microphone ready. Starting Speech Recognition...');
+
+    startListening_(true);
+  }catch(err){
+    voiceEnabled=false;
+    shouldKeepListening=false;
+    processing=false;
+    clearRecognitionWatchdogs_();
+
+    $('startBtn').disabled=false;
+    $('stopBtn').disabled=true;
+
+    showError(err?.message||String(err));
+    status('');
+  }finally{
+    window.__mgStartBusy=false;
+  }
 }
 
 function finishTurn_(reason){
@@ -660,6 +743,7 @@ function finishTurn_(reason){
   speechActive=false;
   clearTurnTimers_();
   clearRecognitionWatchdogs_();
+  stopMicPreflight_();
   clearTimeout(liveCorrectionTimer);
   liveCorrectionSeq++;
 
@@ -1095,6 +1179,7 @@ function reset(){
   shouldKeepListening=false;
   processing=false;
   window.__mgRequestBusy=false;
+  window.__mgStartBusy=false;
   clearTurnTimers_();
   clearTimeout(liveCorrectionTimer);
 
