@@ -291,12 +291,13 @@ function fallbackSpeech_(text,listenAfter){
 
   const u=new SpeechSynthesisUtterance(text);
   u.lang='ar-EG';
-  u.rate=.94;
+  u.rate=.92;
   u.pitch=1;
   u.volume=1;
 
   const voices=speechSynthesis.getVoices()||[];
-  const ar=voices.find(v=>/^ar[-_]/i.test(v.lang||''));
+  const ar=voices.find(v=>/^ar[-_]EG/i.test(v.lang||'')) ||
+           voices.find(v=>/^ar[-_]/i.test(v.lang||''));
   if(ar) u.voice=ar;
 
   u.onstart=()=>status('CRM is speaking...');
