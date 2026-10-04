@@ -30,8 +30,10 @@ const API='https://script.google.com/macros/s/AKfycbyawltTbaWy291FyF95S0GX6oIlno
 const SILENCE_MS=3000;
 const ANSWER_SILENCE_MS=15000;
 const PHONE_SILENCE_MS=15000;
-const CHUNK_SIZE=900;
-const CHUNK_CONCURRENCY=6;
+const CHUNK_SIZE=3600;
+const CHUNK_CONCURRENCY=4;
+const TTS_SERVER_TIMEOUT_MS=900;
+const TTS_CACHE_LIMIT=40;
 
 let recognition=null;
 let recognitionStartTimer=null;
@@ -74,6 +76,8 @@ let liveCorrectionSeq=0;
 let correctedLiveText='';
 let newLeadIntroPending=false;
 let questionIntroPlayed=false;
+let ttsCache=new Map();
+let ttsPending=new Map();
 
 const $=id=>document.getElementById(id);
 
@@ -250,6 +254,121 @@ async function startVAD_(){
   }
 }
 
+function normalizeTtsText_(text){
+  let s=String(text||'').replace(/\s+/g,' ').trim();
+  if(!s) return '';
+
+  // Keep the screen question untouched, but give TTS a clean Egyptian-Arabic
+  // sentence. These phonetic forms prevent RTL/LTR mixing from breaking speech.
+  const replacements=[
+    [/\bCold\s*Call\b/gi,'كولد كول'],
+    [/\bElement\s*Direct\b/gi,'إليمنت دايركت'],
+    [/\bElement\b/gi,'إليمنت'],
+    [/\bDirect\b/gi,'دايركت'],
+    [/\bFB\b/gi,'فيسبوك'],
+    [/\bRefell\b/gi,'ريفيل'],
+    [/\bReferr?al\b/gi,'ريفيرال'],
+    [/\bStandalone\b/gi,'ستاند ألون'],
+    [/\bTwin\s*House\b/gi,'توين هاوس'],
+    [/\bTown\s*House\b/gi,'تاون هاوس'],
+    [/\bMivida\b/gi,'ميفيدا'],
+    [/\bUptown\s*Cairo\b/gi,'أب تاون كايرو'],
+    [/\bOne\s*Ninety\b/gi,'وان ناينتي'],
+    [/\bMountain\s*View\b/gi,'ماونتن فيو'],
+    [/\bGroova\b/gi,'جروڤا'],
+    [/\bHyde\s*Park\b/gi,'هايد بارك'],
+    [/\bThe\s*Brooks\b/gi,'ذا بروكس']
+  ];
+  replacements.forEach(([re,v])=>{s=s.replace(re,v);});
+  return s;
+}
+
+function cacheTts_(key,data){
+  if(!key||!data) return;
+  if(ttsCache.size>=TTS_CACHE_LIMIT){
+    const first=ttsCache.keys().next().value;
+    if(first) ttsCache.delete(first);
+  }
+  ttsCache.set(key,data);
+}
+
+function getCachedTts_(text){
+  const key=normalizeTtsText_(text);
+  return ttsCache.get(key)||null;
+}
+
+async function fetchTts_(text){
+  const spoken=normalizeTtsText_(text);
+  if(!spoken) return null;
+  const cached=getCachedTts_(spoken);
+  if(cached) return cached;
+  if(ttsPending.has(spoken)) return ttsPending.get(spoken);
+
+  const promise=jsonpRequest({api:'voiceSpeak',text:spoken},TTS_SERVER_TIMEOUT_MS)
+    .then(data=>{
+      if(data&&data.success&&data.audioBase64){
+        const audioData={
+          src:'data:'+(data.mimeType||'audio/wav')+';base64,'+data.audioBase64,
+          cached:!!data.cached
+        };
+        cacheTts_(spoken,audioData);
+        return audioData;
+      }
+      return null;
+    })
+    .catch(()=>null)
+    .finally(()=>ttsPending.delete(spoken));
+
+  ttsPending.set(spoken,promise);
+  return promise;
+}
+
+function browserVoice_(){
+  if(!('speechSynthesis' in window)) return null;
+  const voices=speechSynthesis.getVoices()||[];
+  const score=v=>{
+    const lang=String(v.lang||'').toLowerCase();
+    const name=String(v.name||'').toLowerCase();
+    let n=0;
+    if(lang==='ar-eg') n+=1000;
+    else if(lang.startsWith('ar-')) n+=700;
+    else if(lang==='ar') n+=500;
+    if(/microsoft|online|natural|salma|hoda|laila|tarik/.test(name)) n+=100;
+    return n;
+  };
+  return voices.slice().sort((a,b)=>score(b)-score(a))[0]||null;
+}
+
+function fallbackSpeech_(text,listenAfter){
+  if(!('speechSynthesis' in window)){
+    vadSuppressed=false;
+    if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),80);
+    return;
+  }
+
+  try{speechSynthesis.cancel();}catch(e){}
+
+  const spoken=normalizeTtsText_(text);
+  const u=new SpeechSynthesisUtterance(spoken);
+  u.lang='ar-EG';
+  u.rate=.98;
+  u.pitch=1;
+  u.volume=1;
+  const v=browserVoice_();
+  if(v) u.voice=v;
+
+  u.onstart=()=>status('المساعد بيتكلم...');
+  u.onend=()=>{
+    vadSuppressed=false;
+    if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),80);
+  };
+  u.onerror=()=>{
+    vadSuppressed=false;
+    if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),80);
+  };
+  speechSynthesis.speak(u);
+}
+
 async function speak(text,listenAfter){
   if(!text) return;
 
@@ -259,78 +378,50 @@ async function speak(text,listenAfter){
   clearInactivityTimer_();
   stopVAD_();
 
-  const request=jsonpRequest({
-    api:'voiceSpeak',
-    text:String(text).trim()
-  },10000);
-
-  let fallbackTimer;
-  let finished=false;
-
-  const fallbackPromise=new Promise(resolve=>{
-    fallbackTimer=setTimeout(()=>{
-      if(finished) return;
-      finished=true;
-      resolve(null);
-    },2200);
-  });
-
-  try{
-    const winner=await Promise.race([
-      request.then(data=>({data:data})).catch(()=>({data:null})),
-      fallbackPromise.then(()=>({data:null,fallback:true}))
-    ]);
-
-    clearTimeout(fallbackTimer);
-
-    if(winner&&winner.data&&winner.data.success&&winner.data.audioBase64){
-      const audio=new Audio('data:'+(winner.data.mimeType||'audio/wav')+';base64,'+winner.data.audioBase64);
-      status('المساعد بيتكلم...');
-      audio.onended=()=>{
-        vadSuppressed=false;
-        if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),300);
-      };
-      audio.onerror=()=>fallbackSpeech_(text,listenAfter);
-      try{
-        await audio.play();
-        return;
-      }catch(e){}
-    }
-  }catch(e){
-    clearTimeout(fallbackTimer);
+  const spoken=normalizeTtsText_(text);
+  const cached=getCachedTts_(spoken);
+  if(cached){
+    const audio=new Audio(cached.src);
+    status('المساعد بيتكلم...');
+    audio.onended=()=>{
+      vadSuppressed=false;
+      if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),80);
+    };
+    audio.onerror=()=>fallbackSpeech_(spoken,listenAfter);
+    try{await audio.play();return;}catch(e){}
   }
 
-  fallbackSpeech_(text,listenAfter);
+  // Start browser TTS immediately. At the same time, fetch Gemini TTS so the
+  // next time the same question appears it is instant. This removes the old
+  // 2.2s dead wait before every question while keeping a dedicated Egyptian
+  // Arabic voice path.
+  const serverPromise=fetchTts_(spoken);
+  let serverData=null;
+  try{
+    serverData=await Promise.race([
+      serverPromise,
+      new Promise(resolve=>setTimeout(()=>resolve(null),TTS_SERVER_TIMEOUT_MS))
+    ]);
+  }catch(e){serverData=null;}
+
+  if(serverData&&serverData.src){
+    const audio=new Audio(serverData.src);
+    status('المساعد بيتكلم...');
+    audio.onended=()=>{
+      vadSuppressed=false;
+      if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),80);
+    };
+    audio.onerror=()=>fallbackSpeech_(spoken,listenAfter);
+    try{await audio.play();return;}catch(e){}
+  }
+
+  fallbackSpeech_(spoken,listenAfter);
 }
 
-function fallbackSpeech_(text,listenAfter){
-  if(!('speechSynthesis' in window)){
-    vadSuppressed=false;
-    if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),150);
-    return;
-  }
-  try{speechSynthesis.cancel();}catch(e){}
-
-  const u=new SpeechSynthesisUtterance(text);
-  u.lang='ar-EG';
-  u.rate=.92;
-  u.pitch=1;
-  u.volume=1;
-
-  const voices=speechSynthesis.getVoices()||[];
-  const v=voices.find(x=>/^ar-EG$/i.test(x.lang||''))||voices.find(x=>/^ar[-_]/i.test(x.lang||''));
-  if(v) u.voice=v;
-
-  u.onstart=()=>status('المساعد بيتكلم...');
-  u.onend=()=>{
-    vadSuppressed=false;
-    if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),250);
-  };
-  u.onerror=()=>{
-    vadSuppressed=false;
-    if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),250);
-  };
-  speechSynthesis.speak(u);
+function prefetchQuestionTts_(text){
+  const spoken=normalizeTtsText_(text);
+  if(!spoken||getCachedTts_(spoken)||ttsPending.has(spoken)) return;
+  fetchTts_(spoken).catch(()=>{});
 }
 
 
@@ -811,18 +902,14 @@ function finishTurn_(reason){
   }
 
   if(currentMode==='answer'){
-    status('براجع الإجابة بسرعة...');
-
-    correctAnswerContext_(t).then(corrected=>{
-      conversation.push('ANSWER: '+corrected);
-      render();
-      processConversation();
-    }).catch(()=>{
-      conversation.push('ANSWER: '+t);
-      render();
-      processConversation();
-    });
-
+    // Do not call Gemini just to rewrite every clarification answer. The final
+    // voiceProcess call already has the full QUESTION/ANSWER context and does
+    // the authoritative correction. This removes one network round-trip per
+    // question and keeps the conversation responsive.
+    const local=localClarificationAnswer_(questionText,t);
+    conversation.push('ANSWER: '+(local||t));
+    render();
+    processConversation();
     return;
   }
 
@@ -1145,6 +1232,7 @@ function speakQuestionIntroThen_(questionToSpeak){
     'بص، ناقصني كام معلومة صغيرة عشان أكمّل الليد. هسألك عليهم واحدة واحدة، '+
     'وإنت رد عليا براحتك، ومش هقاطعك. '+questionToSpeak;
 
+  prefetchQuestionTts_(combined);
   speak(combined,true);
 }
 
@@ -1177,6 +1265,8 @@ function ask(text){
     ? 'قول رقم الموبايل رقم رقم، خد وقتك، وأنا مستنيك تخلص.'
     : questionText;
 
+  // Warm the server TTS cache without blocking the conversation.
+  prefetchQuestionTts_(spoken);
   speakQuestionIntroThen_(spoken);
 }
 
