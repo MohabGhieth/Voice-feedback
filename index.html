@@ -28,7 +28,8 @@
 <script>
 const API='https://script.google.com/macros/s/AKfycbyawltTbaWy291FyF95S0GX6oIlnoac5FzDVxFdDSqUG3VyRoTItG4Mj8zZolxRN_GIjw/exec';
 const SILENCE_MS=3000;
-const PHONE_SILENCE_MS=12000;
+const ANSWER_SILENCE_MS=15000;
+const PHONE_SILENCE_MS=15000;
 const CHUNK_SIZE=900;
 
 let recognition=null;
@@ -79,9 +80,9 @@ function currentVoiceText_(){
 }
 
 function activeSilenceMs_(){
-  // Phone numbers are spoken slowly/digit-by-digit, so they get their own
-  // generous silence window. Normal feedback remains at 3 seconds.
-  return phoneMode ? PHONE_SILENCE_MS : SILENCE_MS;
+  if(phoneMode) return PHONE_SILENCE_MS;
+  if(currentMode==='answer') return ANSWER_SILENCE_MS;
+  return SILENCE_MS;
 }
 
 function maskConversationForDisplay_(line){
@@ -99,10 +100,19 @@ function maskConversationForDisplay_(line){
 }
 
 function render(){
-  const rows=conversation.map(maskConversationForDisplay_);
+  const rows=conversation
+    .filter(function(line){
+      return !/^QUESTION\s*:/i.test(String(line||'')) &&
+             !/^ANSWER\s*:/i.test(String(line||''));
+    })
+    .map(maskConversationForDisplay_);
+
   const live=currentVoiceText_();
   if(live) rows.push('VOICE (LIVE): '+live);
-  $('transcript').textContent=rows.length ? rows.join('\n\n') : 'No speech captured yet.';
+
+  $('transcript').textContent=rows.length
+    ? rows.join('\n\n')
+    : 'No speech captured yet.';
 }
 
 function ctor(){
@@ -216,6 +226,7 @@ async function speak(text,listenAfter){
   vadSuppressed=true;
   clearTimeout(silenceTimer);
   clearInactivityTimer_();
+  stopVAD_();
 
   // Primary TTS: Gemini 3.8 Flash TTS, tuned for Egyptian Arabic.
   try{
@@ -236,7 +247,7 @@ async function speak(text,listenAfter){
         lastAudibleAt=Date.now();
 
         if(listenAfter && voiceEnabled){
-          setTimeout(()=>startListening_(true),250);
+          setTimeout(()=>startListening_(true),550);
         }
       };
 
@@ -286,14 +297,14 @@ function fallbackSpeech_(text,listenAfter){
     lastAudibleAt=Date.now();
 
     if(listenAfter && voiceEnabled){
-      setTimeout(()=>startListening_(true),250);
+      setTimeout(()=>startListening_(true),550);
     }
   };
 
   u.onerror=()=>{
     vadSuppressed=false;
     if(listenAfter && voiceEnabled){
-      setTimeout(()=>startListening_(true),250);
+      setTimeout(()=>startListening_(true),550);
     }
   };
 
@@ -316,150 +327,32 @@ function clearTurnTimers_(){
   restartTimer=null;
 }
 
-function scheduleRealSilence_(){ }
+function scheduleRealSilence_(){
+  clearTimeout(silenceTimer);
 
-function createRecognition_(){
-  const C=ctor();
-  if(!C) throw new Error('Speech Recognition is not available. Use current Chrome or Edge.');
+  if(!shouldKeepListening || processing) return;
 
-  const r=new C();
+  // No recognized speech yet => NEVER finalize.
+  const text=currentVoiceText_();
+  if(!text || !lastSpeechAt) return;
 
-  // Main story: natural continuous speech.
-  // Phone answer: one short recognition session so it can be validated immediately.
-  r.continuous=!phoneMode;
-  r.interimResults=true;
-  r.maxAlternatives=3;
-  r.lang='ar-EG';
+  const ms=activeSilenceMs_();
+  const elapsed=Date.now()-lastSpeechAt;
 
-  r.onstart=()=>{
-    isListening=true;
-    $('startBtn').disabled=true;
-    $('stopBtn').disabled=false;
+  silenceTimer=setTimeout(()=>{
+    if(!shouldKeepListening || processing) return;
+    if(!currentVoiceText_() || !lastSpeechAt) return;
 
-    $('modeTitle').textContent=currentMode==='answer' ? 'Listening for Answer' : 'Listening';
-    $('modeText').textContent=currentMode==='answer'
-      ? 'تمام، سامعك. خُد وقتك ورد على السؤال.'
-      : 'سامعك. اتكلم براحتك، وأنا هجمع القصة كلها قبل ما أحفظها.';
+    const quietFor=Date.now()-lastSpeechAt;
 
-    status(currentMode==='answer'
-      ? 'Listening for your answer...'
-      : 'Listening... Speak naturally.');
-  };
-
-  r.onaudiostart=()=>{};
-
-  r.onsoundstart=()=>{
-    if(!shouldKeepListening) return;
-    status(phoneMode
-      ? 'سامع الرقم. خد وقتك لحد ما تخلص كل الأرقام...'
-      : 'تمام، كمّل براحتك...');
-  };
-
-  r.onspeechstart=()=>{};
-
-  r.onresult=e=>{
-    let newestFinal='';
-
-    for(let i=e.resultIndex;i<e.results.length;i++){
-      const result=e.results[i];
-      const text=String(result?.[0]?.transcript||'').trim();
-      if(!text) continue;
-
-      if(result.isFinal){
-        turnFinal=(turnFinal+' '+text).replace(/\s+/g,' ').trim();
-        newestFinal=(newestFinal+' '+text).replace(/\s+/g,' ').trim();
-        turnInterim='';
-      }else{
-        turnInterim=text;
-      }
-    }
-
-    heardSpeech=true;
-    lastSpeechAt=Date.now();
-    clearTimeout(silenceTimer);
-
-    if(currentMode==='call' && !phoneMode){
-      correctedLiveText=localCorrectLive_(currentVoiceText_());
-    }
-
-    render();
-
-    // Fallback for Chromium builds that do not reliably fire speechend/soundend.
-    // Any new result resets the 3-second deadline.
-    if(newestFinal && currentMode==='call' && !phoneMode){
-      queueLiveCorrection_(newestFinal);
-    }
-  };
-
-  r.onspeechend=()=>{ speechActive=false; };
-
-  r.onsoundend=()=>{ speechActive=false; };
-
-  r.onaudioend=()=>{};
-
-  r.onerror=e=>{
-    const err=String(e?.error||'unknown');
-
-    if(err==='aborted') return;
-
-    if(err==='no-speech'){
-      if(shouldKeepListening){
-        status(phoneMode ? 'قول رقم الموبايل رقم رقم...' : 'لسه سامعك، كمّل براحتك...');
-      }
+    // A newer recognition result means the user continued speaking.
+    if(quietFor<ms){
+      scheduleRealSilence_();
       return;
     }
 
-    if(err==='network'){
-      status('حصل تقطيع بسيط في التعرف على الكلام... بكمل الاستماع.');
-      return;
-    }
-
-    if(err==='not-allowed'||err==='service-not-allowed'||err==='audio-capture'){
-      shouldKeepListening=false;
-      isListening=false;
-      $('startBtn').disabled=false;
-      $('stopBtn').disabled=true;
-      showError('Speech Recognition error: '+err);
-      status('');
-    }
-  };
-
-  r.onend=()=>{
-    isListening=false;
-
-    if(shouldKeepListening && !processing){
-      // SpeechRecognition may restart while the microphone VAD keeps listening.
-      // Restarting recognition NEVER finalizes the user's turn.
-      clearTimeout(restartTimer);
-
-      restartTimer=setTimeout(()=>{
-        if(!shouldKeepListening || processing || isListening) return;
-
-        try{
-          recognition=createRecognition_();
-          recognition.start();
-        }catch(e){
-          clearTimeout(restartTimer);
-          restartTimer=setTimeout(()=>{
-            if(!shouldKeepListening || processing || isListening) return;
-
-            try{
-              recognition=createRecognition_();
-              recognition.start();
-            }catch(err){
-              shouldKeepListening=false;
-              $('startBtn').disabled=false;
-              $('stopBtn').disabled=true;
-              showError('Speech Recognition could not restart. Press Start Voice once again.');
-              status('');
-            }
-          },700);
-        }
-      },180);
-    }
-  };
-
-  return r;
+    finishTurn_('recognition-inactivity');
+  },Math.max(350,ms-elapsed));
 }
 
 function startListening_(newTurn){
@@ -479,7 +372,6 @@ function startListening_(newTurn){
     speechActive=false;
     heardSpeech=false;
     lastSpeechAt=0;
-    lastAudibleAt=Date.now();
     phoneAttempts=0;
 
     if(currentMode==='call'){
@@ -497,13 +389,11 @@ function startListening_(newTurn){
   $('stopBtn').disabled=false;
 
   status(currentMode==='answer'
-    ? 'Listening for your answer...'
+    ? 'Listening for your answer... خد وقتك، وأنا مستنيك تخلص.'
     : 'Listening... Speak naturally.');
 
-  if(!vadRunning){
-    startVAD_();
-  }
-
+  // SpeechRecognition is the only active microphone consumer.
+  // Do not open a second getUserMedia/WebAudio VAD stream here.
   try{
     recognition=createRecognition_();
     recognition.start();
@@ -532,9 +422,9 @@ function startSession(){
 
   $('modeTitle').textContent='Listening';
   $('modeText').textContent='سامعك. اتكلم براحتك، وأنا هجمع القصة كلها قبل ما أحفظها.';
-  status('Starting microphone and Speech Recognition...');
+  status('Starting Speech Recognition...');
 
-  startVAD_().finally(()=>startListening_(true));
+  startListening_(true);
 }
 
 function finishTurn_(reason){
@@ -579,7 +469,6 @@ function finishTurn_(reason){
       turnFinal='';
       turnInterim='';
       lastSpeechAt=0;
-      lastAudibleAt=Date.now();
       phoneMode=true;
       $('questionText').textContent='الرقم مش واضح أو ناقص. قول رقم الموبايل رقم رقم. خد وقتك، وأنا مستنيك تخلص.';
       render();
