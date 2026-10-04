@@ -37,6 +37,7 @@ let speechActive=false,heardSpeech=false,phoneMode=false,phoneAttempts=0;
 let sessionFinalText='',sessionInterimText='',turnTranscript='';
 let sessionRotateTimer=null;
 let processingWatchdog=null;
+let startWatchdog=null,startRetryCount=0;
 const $=id=>document.getElementById(id);
 function status(t){$('status').textContent=t||''}function showError(t){$('error').textContent=t||'';$('error').classList.remove('hidden')}function clearError(){$('error').textContent='';$('error').classList.add('hidden')}
 function getCurrentVoiceText_(){
@@ -153,6 +154,8 @@ function buildRecognition(){
   r.lang='ar-EG';
 
   r.onstart=()=>{
+    clearStartWatchdog_();
+    startRetryCount=0;
     isListening=true;
     sessionFinalText='';
     sessionInterimText='';
@@ -300,6 +303,7 @@ function buildRecognition(){
           restartTimer=setTimeout(()=>{
             if(!shouldKeepListening || requestBusy || turnProcessing || isListening) return;
             try{
+              recognition=buildRecognition();
               recognition.start();
             }catch(err){
               shouldKeepListening=false;
@@ -325,6 +329,7 @@ function startListening(){
 
   clearTimeout(silenceTimer);
   clearTimeout(restartTimer);
+  clearStartWatchdog_();
   clearSessionTimers_();
   turnProcessing=false;
   lastSpeechActivityAt=0;
@@ -343,8 +348,11 @@ function startListening(){
   heardSpeech=false;
 
   try{
-    if(!recognition) recognition=buildRecognition();
-    recognition.start();
+    // Create a fresh recognizer for a NEW user turn. This avoids a stale
+    // Chromium recognition object after a previous abort/error.
+    recognition=buildRecognition();
+    startRetryCount=0;
+    startRecognitionWithRecovery_();
   }catch(e){
     shouldKeepListening=false;
     showError('Could not start Speech Recognition: '+(e.message||e));
@@ -361,6 +369,7 @@ function finalizeVoiceTurn_(){
 
   clearTimeout(silenceTimer);
   clearTimeout(restartTimer);
+  clearStartWatchdog_();
   clearSessionTimers_();
 
   // Stop recognition immediately, but do not depend on onend to perform processing.
@@ -630,6 +639,72 @@ function handleResult(data){
   $('startBtn').disabled=false;
   status('');
 }
+
+function clearStartWatchdog_(){
+  clearTimeout(startWatchdog);
+  startWatchdog=null;
+}
+
+function startRecognitionWithRecovery_(){
+  clearStartWatchdog_();
+
+  if(!shouldKeepListening || requestBusy || turnProcessing) return;
+
+  try{
+    if(!recognition) recognition=buildRecognition();
+    recognition.start();
+  }catch(e){
+    startRetryCount++;
+    if(startRetryCount>3){
+      shouldKeepListening=false;
+      $('startBtn').disabled=false;
+      $('stopBtn').disabled=true;
+      showError('Speech Recognition could not start: '+(e.message||String(e)));
+      status('');
+      return;
+    }
+
+    clearStartWatchdog_();
+    startWatchdog=setTimeout(startRecognitionWithRecovery_,800);
+    return;
+  }
+
+  startWatchdog=setTimeout(()=>{
+    if(!shouldKeepListening || requestBusy || turnProcessing || isListening) return;
+
+    startRetryCount++;
+
+    try{ if(recognition) recognition.abort(); }catch(e){}
+
+    recognition=null;
+
+    if(startRetryCount>3){
+      shouldKeepListening=false;
+      $('startBtn').disabled=false;
+      $('stopBtn').disabled=true;
+      showError('Speech Recognition did not start. Refresh the page and press Start Voice again.');
+      status('');
+      return;
+    }
+
+    status('إعادة تشغيل الاستماع...');
+    setTimeout(()=>{
+      if(!shouldKeepListening || requestBusy || turnProcessing) return;
+
+      try{
+        recognition=buildRecognition();
+        recognition.start();
+        startWatchdog=setTimeout(()=>{
+          if(!shouldKeepListening || requestBusy || turnProcessing || isListening) return;
+          startRecognitionWithRecovery_();
+        },3000);
+      }catch(e){
+        startRecognitionWithRecovery_();
+      }
+    },150);
+  },3000);
+}
+
 function startSession(){
   clearError();
   if(!ctor()){
@@ -638,6 +713,7 @@ function startSession(){
   }
 
   voiceEnabled=true;
+  $('modeTitle').textContent='Starting';
   status('Starting Speech Recognition...');
   startListening();
 }
