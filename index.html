@@ -115,7 +115,7 @@
 
       <div class="buttons">
         <button id="startBtn" class="start" type="button" onclick="startVoiceSession()">🎙️ Start Voice</button>
-        <button id="stopBtn" class="stop" type="button" onclick="stopListening()" disabled>⏹ Process Now</button>
+        <button id="stopBtn" class="stop" type="button" onclick="stopListening()" disabled>⏹ Stop</button>
         <button id="resetBtn" class="reset" type="button" onclick="resetVoice()">↺ Reset</button>
       </div>
 
@@ -123,14 +123,15 @@
       <div id="error" class="error hidden"></div>
 
       <div class="tip">
-        Start Voice once. For a normal call, tell the complete story without stopping for the CRM. After about 3.5 seconds of silence, it processes the whole story. For short answers to CRM questions, it waits about 1 second.
+        Keep this voice page open. When MG RESALE needs missing information, it will ask the question aloud and this page will listen for your answer.
       </div>
     </section>
   </main>
 
   
   
-  <script>
+  <script>const VOICE_API_URL = 'https://script.google.com/macros/s/AKfycbyawltTbaWy291FyF95S0GX6oIlnoac5FzDVxFdDSqUG3VyRoTItG4Mj8zZolxRN_GIjw/exec';</script>
+<script>
     let recognition = null;
     let isListening = false;
     let shouldKeepListening = false;
@@ -141,8 +142,7 @@
     let permissionStream = null;
     let voiceEnabled = false;
     let silenceTimer = null;
-    const CALL_SILENCE_MS = 3500;
-    const ANSWER_SILENCE_MS = 1000;
+    const SILENCE_MS = 1800;
 
     function $(id) { return document.getElementById(id); }
 
@@ -259,7 +259,7 @@
         setStatus(
           currentMode === 'answer'
             ? 'Listening for your answer...'
-            : 'Listening... Tell the whole story. I will wait until you finish.'
+            : 'Listening... Speak naturally, then tap Stop.'
         );
       };
 
@@ -299,7 +299,7 @@
             if (recognition) {
               try { recognition.stop(); } catch (e) {}
             }
-          }, currentMode === 'answer' ? ANSWER_SILENCE_MS : CALL_SILENCE_MS);
+          }, SILENCE_MS);
         }
       };
 
@@ -481,14 +481,26 @@
     }
 
     function sendTranscript(text) {
-      const target = window.parent && window.parent !== window ? window.parent : window.opener;
-      if (!target || target.closed) {
-        setStatus('Speech captured. Open Voice Mode from MG RESALE.');
+      const opener = window.opener;
+
+      if (!opener || opener.closed) {
+        setStatus(
+          'Speech captured. Open this page from MG RESALE for automatic delivery.'
+        );
         return;
       }
+
       setStatus('Sending to MG RESALE...');
+
       try {
-        target.postMessage({ type: 'VOICE_TRANSCRIPT', text: text }, '*');
+        opener.postMessage(
+          {
+            type: 'VOICE_TRANSCRIPT',
+            text: text
+          },
+          '*'
+        );
+
         setStatus('Sent to MG RESALE.');
       } catch (e) {
         showError('Could not return the transcript to MG RESALE.');
@@ -643,11 +655,15 @@
      * Tell the CRM that Voice Mode is ready.
      */
     try {
-      const target = window.parent && window.parent !== window ? window.parent : window.opener;
-      if (target && !target.closed) {
-        target.postMessage({ type: 'VOICE_READY' }, '*');
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage(
+          { type: 'VOICE_READY' },
+          '*'
+        );
       } else {
-        setStatus('Open Voice Mode from MG RESALE.');
+        setStatus(
+          'Open this page from MG RESALE Voice Mode.'
+        );
       }
     } catch (e) {}
   </script>
