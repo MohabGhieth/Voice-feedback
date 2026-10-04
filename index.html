@@ -247,7 +247,7 @@ async function speak(text,listenAfter){
         lastAudibleAt=Date.now();
 
         if(listenAfter && voiceEnabled){
-          setTimeout(()=>startListening_(true),550);
+          setTimeout(()=>startListening_(true),250);
         }
       };
 
@@ -297,14 +297,14 @@ function fallbackSpeech_(text,listenAfter){
     lastAudibleAt=Date.now();
 
     if(listenAfter && voiceEnabled){
-      setTimeout(()=>startListening_(true),550);
+      setTimeout(()=>startListening_(true),250);
     }
   };
 
   u.onerror=()=>{
     vadSuppressed=false;
     if(listenAfter && voiceEnabled){
-      setTimeout(()=>startListening_(true),550);
+      setTimeout(()=>startListening_(true),250);
     }
   };
 
@@ -332,8 +332,10 @@ function scheduleRealSilence_(){
 
   if(!shouldKeepListening || processing) return;
 
-  // No recognized speech yet => NEVER finalize.
   const text=currentVoiceText_();
+
+  // Critical guard: before SpeechRecognition returns ANY text, silence does
+  // not count as a completed answer.
   if(!text || !lastSpeechAt) return;
 
   const ms=activeSilenceMs_();
@@ -344,8 +346,6 @@ function scheduleRealSilence_(){
     if(!currentVoiceText_() || !lastSpeechAt) return;
 
     const quietFor=Date.now()-lastSpeechAt;
-
-    // A newer recognition result means the user continued speaking.
     if(quietFor<ms){
       scheduleRealSilence_();
       return;
@@ -372,6 +372,7 @@ function startListening_(newTurn){
     speechActive=false;
     heardSpeech=false;
     lastSpeechAt=0;
+    lastAudibleAt=0;
     phoneAttempts=0;
 
     if(currentMode==='call'){
@@ -393,7 +394,6 @@ function startListening_(newTurn){
     : 'Listening... Speak naturally.');
 
   // SpeechRecognition is the only active microphone consumer.
-  // Do not open a second getUserMedia/WebAudio VAD stream here.
   try{
     recognition=createRecognition_();
     recognition.start();
@@ -469,6 +469,7 @@ function finishTurn_(reason){
       turnFinal='';
       turnInterim='';
       lastSpeechAt=0;
+      lastAudibleAt=Date.now();
       phoneMode=true;
       $('questionText').textContent='الرقم مش واضح أو ناقص. قول رقم الموبايل رقم رقم. خد وقتك، وأنا مستنيك تخلص.';
       render();
