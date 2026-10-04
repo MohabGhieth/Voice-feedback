@@ -1,147 +1,49 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#07131a">
 <title>MG RESALE — Voice CRM</title>
 <style>
-body{margin:0;background:#f5f7f8;font-family:Arial,sans-serif;color:#102018}
-.wrap{max-width:720px;margin:auto;padding:18px}.card{background:#fff;border-radius:18px;padding:20px;box-shadow:0 8px 28px rgba(0,0,0,.08)}
-h1{margin:0 0 8px}.sub{color:#64748b;line-height:1.5}
-button{border:0;border-radius:14px;padding:14px 18px;font-size:17px;font-weight:700;cursor:pointer}
-#start{background:#22c55e;color:#fff;width:100%;margin-top:16px}#process{background:#111827;color:#fff;width:100%;margin-top:10px;display:none}
-#status,#transcript{margin-top:14px;padding:12px;border-radius:12px;line-height:1.6}
-#status{background:#eef2f7;min-height:48px}#transcript{background:#f8fafc;border:1px solid #e2e8f0;min-height:120px;white-space:pre-wrap}
-.ok{background:#ecfdf5!important}.warn{background:#fff7ed!important}.err{background:#fef2f2!important}
+:root{--bg:#07131a;--card:#0d2029;--text:#f4fbfd;--muted:#9eb5bc;--accent:#6ee7d8;--danger:#ff8f8f;--border:rgba(255,255,255,.1)}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at top,#12303a 0%,var(--bg) 55%,#040b10 100%);color:var(--text);font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px 14px}.app{width:100%;max-width:680px}.brand{text-align:center;margin-bottom:16px}.brand h1{margin:0;font-size:30px}.brand p{margin:6px 0;color:var(--muted)}.card{background:rgba(13,32,41,.96);border:1px solid var(--border);border-radius:24px;padding:22px}.mode,.question{border-radius:15px;padding:14px 15px;background:rgba(255,255,255,.04);border:1px solid var(--border);margin-bottom:14px;line-height:1.5}.mode b{color:var(--accent)}.question{background:rgba(110,231,216,.10);border-color:rgba(110,231,216,.26)}.question small{display:block;color:var(--muted);margin-bottom:7px}.question strong{display:block;font-size:20px;line-height:1.45}.transcript{min-height:170px;white-space:pre-wrap;direction:auto;background:#07161d;border:1px solid var(--border);border-radius:16px;padding:14px;line-height:1.55;overflow-wrap:anywhere;margin-bottom:14px}.buttons{display:grid;grid-template-columns:1fr 1fr;gap:10px}button{border:0;border-radius:14px;padding:15px 12px;font-size:16px;font-weight:800;cursor:pointer}.start{background:var(--accent);color:#06211f}.stop{background:#6f2424;color:#fff}.reset{background:#17333d;color:#fff}button:disabled{opacity:.55;cursor:not-allowed}.status{min-height:24px;margin-top:13px;color:var(--muted);font-size:14px}.error{margin-top:12px;padding:12px 13px;border-radius:12px;color:#ffd7d7;background:rgba(140,31,31,.22);border:1px solid rgba(255,143,143,.28)}.hidden{display:none!important}.tip{color:var(--muted);font-size:12px;line-height:1.55;margin-top:13px}@media(max-width:500px){body{padding:12px 10px;align-items:flex-start}.card{padding:16px;margin-top:20px}.brand h1{font-size:27px}.buttons{grid-template-columns:1fr}}
 </style>
 </head>
-<body><div class="wrap"><div class="card">
-<h1>MG RESALE — Voice CRM</h1>
-<div class="sub">اضغط Start Voice مرة واحدة واحكي الـ feedback كامل براحتك. بعد حوالي 3 ثواني من آخر كلام، الـ CRM يبدأ المعالجة. الأسئلة تأتي بعد انتهاء الـ feedback بالكامل.</div>
-<button id="start">🎙 Start Voice</button><button id="process">⏹ Process Now</button>
-<div id="status">Ready.</div><div id="transcript"></div>
-</div></div>
+<body>
+<main class="app">
+<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — Final</p></div>
+<section class="card">
+<div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically.</span></div>
+<div id="question" class="question hidden"><small>CRM asks:</small><strong id="questionText"></strong></div>
+<div id="transcript" class="transcript">No speech captured yet.</div>
+<div class="buttons">
+<button id="startBtn" class="start" type="button">🎙️ Start Voice</button>
+<button id="stopBtn" class="stop" type="button" disabled>⏹ Stop / Process</button>
+<button id="resetBtn" class="reset" type="button">↺ Reset</button>
+</div>
+<div id="status" class="status"></div><div id="error" class="error hidden"></div>
+<div class="tip">One page only. No popup. Your original feedback stays in memory while the CRM asks for missing information. Each answer is added to the same conversation.</div>
+</section>
+</main>
 <script>
-const VOICE_API_URL='https://script.google.com/macros/s/AKfycbyawltTbaWy291FyF95S0GX6oIlnoac5FzDVxFdDSqUG3VyRoTItG4Mj8zZolxRN_GIjw/exec';
+let recognition=null,isListening=false,voiceEnabled=false,shouldKeepListening=false,finalText='',silenceTimer=null,restartTimer=null,conversation=[];let currentMode='call';let questionText='';
 const SILENCE_MS=3000;
-const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-const startBtn=document.getElementById('start'),processBtn=document.getElementById('process'),statusEl=document.getElementById('status'),transcriptEl=document.getElementById('transcript');
-let rec=null,keep=false,finalText='',interim='',timer=null,busy=false;
-let sessionTranscript='';
-let lastQuestion='';
-let sessionActive=false;
-
-function status(t,c=''){statusEl.textContent=t;statusEl.className=c}
-function render(){transcriptEl.textContent=(sessionTranscript+'\n'+finalText+' '+interim).trim()}
-function clearTimer(){if(timer)clearTimeout(timer);timer=null}
-function speak(t){if(!('speechSynthesis'in window)||!t)return;speechSynthesis.cancel();let u=new SpeechSynthesisUtterance(t);u.lang='ar-EG';u.rate=1.05;speechSynthesis.speak(u)}
-function arm(){clearTimer();timer=setTimeout(()=>{if(finalText.trim()){keep=false;try{rec.stop()}catch(e){}}},SILENCE_MS)}
-function setup(){
- if(!SR){status('Speech Recognition غير مدعوم في المتصفح. استخدم Chrome/Android أو Safari/iPhone.','err');return false}
- rec=new SR();rec.lang='ar-EG';rec.continuous=true;rec.interimResults=true;rec.maxAlternatives=1;
- rec.onstart=()=>status(sessionActive&&lastQuestion?'جاوب على السؤال براحتك...':'اتكلم براحتك... مش هسألك أي سؤال لحد ما تخلص الـ feedback.');
- rec.onresult=e=>{
-   interim='';
-   for(let i=e.resultIndex;i<e.results.length;i++){
-     let t=e.results[i][0].transcript||'';
-     if(e.results[i].isFinal) finalText+=t+' ';
-     else interim+=t;
-   }
-   render();
-   if(finalText.trim())arm();
- };
- rec.onerror=e=>{
-   if(e.error==='not-allowed'||e.error==='service-not-allowed'){
-     keep=false;status('المايك مرفوض. Allow Microphone للموقع ثم جرّب مرة أخرى.','err');
-   }else if(e.error!=='aborted') status('Voice error: '+e.error,'err');
- };
- rec.onend=()=>{
-   if(keep&&!busy){
-     setTimeout(()=>{try{rec.start()}catch(e){}},150);
-   }else if(!busy&&finalText.trim()){
-     send();
-   }
- };
- return true;
-}
-async function mic(){
- if(!navigator.mediaDevices?.getUserMedia)return true;
- try{let s=await navigator.mediaDevices.getUserMedia({audio:true});s.getTracks().forEach(t=>t.stop());return true}
- catch(e){status('Allow Microphone للموقع من إعدادات المتصفح ثم اضغط Start Voice مرة أخرى.','err');return false}
-}
-async function start(){
- if(busy||sessionActive)return;
- if(!rec&&!setup())return;
- if(!(await mic()))return;
- finalText='';interim='';sessionTranscript='';lastQuestion='';sessionActive=true;render();clearTimer();keep=true;
- processBtn.style.display='block';startBtn.disabled=true;
- try{rec.start()}catch(e){}
-}
-function manual(){
- if(!finalText.trim())return;
- keep=false;clearTimer();try{rec.stop()}catch(e){}
-}
-function addUserTurn(){
- const answer=finalText.trim();
- if(!answer)return '';
- if(lastQuestion){
-   sessionTranscript += '\nCRM question: '+lastQuestion+'\nSalesperson answer: '+answer+'\n';
- }else{
-   sessionTranscript += '\nOriginal call feedback: '+answer+'\n';
- }
- return answer;
-}
-async function ask(q){
- lastQuestion=q||'';
- status(lastQuestion,'warn');
- speak(lastQuestion);
- await new Promise(r=>{
-   if(!('speechSynthesis'in window))return r();
-   let x=setInterval(()=>{if(!speechSynthesis.speaking){clearInterval(x);r()}},80);
- });
- finalText='';interim='';render();clearTimer();keep=true;
- try{rec.start()}catch(e){}
-}
-function resetSession(){
- keep=false;clearTimer();sessionActive=false;lastQuestion='';sessionTranscript='';finalText='';interim='';render();
- startBtn.disabled=false;processBtn.style.display='none';processBtn.disabled=false;
-}
-async function send(){
- if(busy||!finalText.trim())return;
- busy=true;processBtn.disabled=true;startBtn.disabled=true;
- const answer=addUserTurn();
- finalText='';interim='';render();
- status('براجع الـ feedback كامل مع كل الإجابات السابقة وبحلله...');
- try{
-   const payload=sessionTranscript.trim();
-   let r=await fetch(VOICE_API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({transcript:payload})});
-   let d=await r.json();
-   await handle(d);
- }catch(e){
-   status('لم أستطع الاتصال بالـ CRM. راجع آخر Deployment للـ Apps Script وتأكد أن الوصول Anyone.','err');
-   speak('لم أستطع الاتصال بالـ CRM.');
- }
- finally{busy=false;processBtn.disabled=false;}
-}
-async function handle(d){
- if(!d)return;
- if(d.success){
-   status(d.message||'Saved successfully.','ok');
-   speak(d.message||'تم الحفظ بنجاح.');
-   resetSession();
-   return;
- }
- if(d.type==='REQUIRED_NEW_LEAD_DATA'||d.type==='NEW_CLIENT_MISSING_DATA'||d.type==='SOURCE_REQUIRED'||d.type==='CLIENT_NOT_FOUND'||d.type==='MULTIPLE_CLIENTS'){
-   await ask(d.question||d.message);
-   return;
- }
- if(d.type==='LEAD_FIELD_CHANGE_CONFIRMATION'){
-   await ask(d.question||d.message||'هل تريد تعديل بيانات العميل؟ قل عدل أو ضيف أو سيبها زي ما هي.');
-   return;
- }
- keep=false;
- status(d.message||'حدث خطأ.','err');
- speak(d.message||'حدث خطأ أثناء المعالجة.');
-}
-startBtn.onclick=start;processBtn.onclick=manual;
-</script></body></html>
+const $=id=>document.getElementById(id);
+function status(t){$('status').textContent=t||''}function error(t){$('error').textContent=t||'';$('error').classList.remove('hidden')}function clearError(){$('error').textContent='';$('error').classList.add('hidden')}function showTranscript(){const all=conversation.concat(finalText.trim()?['CURRENT: '+finalText.trim()]:[]);$('transcript').textContent=all.length?all.join('\n\n'):'No speech captured yet.'}
+function ctor(){return window.SpeechRecognition||window.webkitSpeechRecognition||null}
+function arabicVoice(){if(!speechSynthesis)return null;return (speechSynthesis.getVoices()||[]).find(v=>/^ar(-|_)/i.test(v.lang||''))||null}
+function speak(text,listenAfter){if(!text)return;if(!speechSynthesis){if(listenAfter)startListening();return}try{speechSynthesis.cancel()}catch(e){}const u=new SpeechSynthesisUtterance(text);u.lang='ar-EG';u.rate=.95;u.pitch=1;u.volume=1;const v=arabicVoice();if(v)u.voice=v;u.onstart=()=>{shouldKeepListening=false;status('CRM is speaking...')};u.onend=()=>{if(listenAfter&&voiceEnabled)setTimeout(startListening,350);else status('')};u.onerror=()=>{if(listenAfter&&voiceEnabled)setTimeout(startListening,350)};speechSynthesis.speak(u)}
+async function permission(){if(!navigator.mediaDevices?.getUserMedia)throw Error('Microphone access is unavailable in this browser.');const s=await navigator.mediaDevices.getUserMedia({audio:true,video:false});s.getTracks().forEach(t=>t.stop())}
+function buildRecognition(){const C=ctor();if(!C)return null;const r=new C();r.continuous=true;r.interimResults=true;r.maxAlternatives=1;r.lang='ar-EG';r.onstart=()=>{isListening=true;$('startBtn').disabled=true;$('stopBtn').disabled=false;status(currentMode==='answer'?'Listening for your answer...':'Listening... Speak naturally.')};r.onresult=e=>{let interim='',gotFinal=false;for(let i=e.resultIndex;i<e.results.length;i++){const x=e.results[i],t=x[0].transcript||'';if(x.isFinal){finalText+=t+' ';gotFinal=true}else interim+=t}showTranscript();if(gotFinal&&finalText.trim()){clearTimeout(silenceTimer);silenceTimer=setTimeout(()=>{if(!shouldKeepListening||!finalText.trim())return;finishTurn()},SILENCE_MS)}};r.onerror=e=>{const x=e?.error||'';if(x==='not-allowed'||x==='service-not-allowed'){shouldKeepListening=false;isListening=false;$('startBtn').disabled=false;$('stopBtn').disabled=true;error('Microphone permission was denied. Allow microphone access for this page.');return}if(shouldKeepListening)status('Reconnecting voice recognition...')};r.onend=()=>{const keep=shouldKeepListening;isListening=false;$('startBtn').disabled=!keep;$('stopBtn').disabled=!keep;if(keep){clearTimeout(restartTimer);restartTimer=setTimeout(()=>{if(!shouldKeepListening)return;try{recognition=buildRecognition();recognition.start()}catch(e){}},350)}else{clearTimeout(silenceTimer)}};return r}
+function startListening(){clearError();if(!voiceEnabled){startSession();return}if(isListening)return;finalText='';$('transcript').textContent=conversation.length?conversation.join('\n\n'):'Listening...';shouldKeepListening=true;try{recognition=buildRecognition();recognition.start()}catch(e){shouldKeepListening=false;error('Could not start voice recognition. Press Start Voice again.')}}
+function finishTurn(){shouldKeepListening=false;clearTimeout(silenceTimer);if(recognition)try{recognition.stop()}catch(e){}isListening=false;$('stopBtn').disabled=true;const t=finalText.trim();if(!t){status('No speech detected.');$('startBtn').disabled=false;return}conversation.push((currentMode==='answer'?'ANSWER: ':'FEEDBACK: ')+t);finalText='';showTranscript();processConversation()}
+function stopNow(){if(finalText.trim())finishTurn();else{shouldKeepListening=false;if(recognition)try{recognition.stop()}catch(e){}status('Stopped.')}}
+function processConversation(){status('Processing with MG RESALE...');$('startBtn').disabled=true;google.script.run.withSuccessHandler(handleResult).withFailureHandler(e=>{error('CRM error: '+(e?.message||e));$('startBtn').disabled=false;status('')}).processVoiceFeedback(conversation.join('\n'))}
+function ask(text){questionText=text||'من فضلك اديني المعلومة الناقصة.';$('questionText').textContent=questionText;$('question').classList.remove('hidden');currentMode='answer';$('modeTitle').textContent='CRM Question';$('modeText').textContent='Listen to the question, then answer naturally.';speak(questionText,true)}
+function handleResult(data){if(!data){error('Empty response from CRM.');$('startBtn').disabled=false;return}if(data.success){conversation=[];finalText='';$('question').classList.add('hidden');currentMode='call';$('modeTitle').textContent='Saved';$('modeText').textContent='Feedback saved successfully. Ready for the next call.';showTranscript();status('Saved. Ready for the next call.');speak(data.message||'تم حفظ المكالمة بنجاح.',false);$('startBtn').disabled=false;return}if(data.question){ask(data.question);return}if(data.type==='NEW_CLIENT_MISSING_DATA'){ask('العميل جديد. محتاج اسم العميل ورقم الموبايل. قولهم لي من فضلك.');return}if(data.type==='SOURCE_REQUIRED'){ask('العميل جديد. مصدر الليد إيه؟ Element، Direct، Adel، FB، Cold Call، ولا Refell؟');return}if(data.type==='CLIENT_NOT_FOUND'){ask('مش قادر أحدد العميل. قول لي اسم العميل أو رقم الموبايل.');return}if(data.type==='MULTIPLE_CLIENTS'){ask(data.message||'فيه أكتر من عميل بنفس الاسم. قول لي رقم الموبايل.');return}error(data.message||'CRM could not process the feedback.');$('startBtn').disabled=false;status('')}
+async function startSession(){clearError();if(!ctor()){error('Speech Recognition is not available. Use recent Chrome/Edge or Safari.');return}try{status('Enabling microphone...');await permission();voiceEnabled=true;if(questionText)speak(questionText,true);else startListening()}catch(e){error('Please allow microphone access for this page.');status('')}}
+function reset(){shouldKeepListening=false;clearTimeout(silenceTimer);clearTimeout(restartTimer);if(recognition)try{recognition.abort()}catch(e){}try{speechSynthesis.cancel()}catch(e){}recognition=null;isListening=false;voiceEnabled=false;finalText='';conversation=[];questionText='';$('question').classList.add('hidden');$('startBtn').disabled=false;$('stopBtn').disabled=true;$('modeTitle').textContent='Ready';$('modeText').textContent='Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically.';$('transcript').textContent='No speech captured yet.';status('Ready.');clearError()}
+$('startBtn').onclick=startSession;$('stopBtn').onclick=stopNow;$('resetBtn').onclick=reset;
+</script>
+</body></html>
