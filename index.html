@@ -18,7 +18,7 @@
 <div id="transcript" class="transcript">No speech captured yet.</div>
 <div class="buttons">
 <button id="startBtn" class="start" type="button">🎙️ Start Voice</button>
-<button id="stopBtn" class="stop" type="button" disabled>⏹ Finish / Process</button>
+<button id="stopBtn" class="stop" type="button" disabled>⏹ Finish & Save</button>
 <button id="resetBtn" class="reset" type="button">↺ Reset</button>
 </div>
 <div id="status" class="status"></div><div id="error" class="error hidden"></div>
@@ -34,11 +34,9 @@ let finalText='',interimText='',correctedLiveText='',silenceTimer=null,restartTi
 let liveCorrectionTimer=null,liveCorrectionSeq=0;
 let requestBusy=false,turnProcessing=false,lastSpeechActivityAt=0,questionIntroPlayed=false,newLeadIntroPending=false;
 let speechActive=false,heardSpeech=false,phoneMode=false,phoneAttempts=0;
-// Each browser recognition session is treated as one utterance. The turn buffer
-// persists across sessions, so Chrome can rotate/stop recognition without losing
-// the paragraph.
 let sessionFinalText='',sessionInterimText='',turnTranscript='';
-let recoveryTimer=null;
+let sessionRotateTimer=null;
+let processingWatchdog=null;
 const $=id=>document.getElementById(id);
 function status(t){$('status').textContent=t||''}function showError(t){$('error').textContent=t||'';$('error').classList.remove('hidden')}function clearError(){$('error').textContent='';$('error').classList.add('hidden')}
 function getCurrentVoiceText_(){
@@ -117,6 +115,28 @@ function scheduleRecognitionSilence(){
 
 
 
+
+function clearSessionTimers_(){
+  clearTimeout(sessionRotateTimer);
+  clearTimeout(processingWatchdog);
+  sessionRotateTimer=null;
+  processingWatchdog=null;
+}
+
+function armSessionRotation_(){
+  clearTimeout(sessionRotateTimer);
+  if(!shouldKeepListening || requestBusy || turnProcessing) return;
+
+  // Keep Chromium sessions short enough to avoid its long-dictation stall.
+  // This is invisible to the user: all captured text is committed before restart.
+  sessionRotateTimer=setTimeout(()=>{
+    if(!shouldKeepListening || requestBusy || turnProcessing || !recognition) return;
+
+    status('جاري تحديث الاستماع... كل كلامك محفوظ.');
+    try{recognition.stop()}catch(e){}
+  },25000);
+}
+
 function buildRecognition(){
   const C=ctor();
   if(!C) return null;
@@ -136,6 +156,7 @@ function buildRecognition(){
     isListening=true;
     sessionFinalText='';
     sessionInterimText='';
+    armSessionRotation_();
     $('startBtn').disabled=true;
     $('stopBtn').disabled=false;
     status(currentMode==='answer'
@@ -253,31 +274,28 @@ function buildRecognition(){
 
   r.onend=()=>{
     isListening=false;
+    clearTimeout(sessionRotateTimer);
+    sessionRotateTimer=null;
 
-    // Preserve EVERYTHING from this browser session before starting another.
-    // This is the key fix for dropped middle sentences.
+    // Always preserve the entire current recognition session before restart.
     commitCurrentRecognitionSession_();
     render();
 
     if(shouldKeepListening && !requestBusy && !turnProcessing){
-      // A real 3-second silence is measured from the end of this utterance.
-      // Any new speech cancels the timer.
-      if(turnTranscript.trim()){
-        scheduleRecognitionSilence();
-      }
+      if(turnTranscript.trim()) scheduleRecognitionSilence();
 
       clearTimeout(restartTimer);
       restartTimer=setTimeout(()=>{
         if(!shouldKeepListening || requestBusy || turnProcessing || isListening) return;
-
         try{
           recognition.start();
         }catch(e){
           clearTimeout(restartTimer);
           restartTimer=setTimeout(()=>{
             if(!shouldKeepListening || requestBusy || turnProcessing || isListening) return;
-            try{ recognition.start(); }
-            catch(err){
+            try{
+              recognition.start();
+            }catch(err){
               shouldKeepListening=false;
               $('startBtn').disabled=false;
               $('stopBtn').disabled=true;
@@ -301,6 +319,7 @@ function startListening(){
 
   clearTimeout(silenceTimer);
   clearTimeout(restartTimer);
+  clearSessionTimers_();
   turnProcessing=false;
   lastSpeechActivityAt=0;
   // A new call/clarification sequence gets one spoken intro before questions.
@@ -326,47 +345,48 @@ function startListening(){
     status('');
   }
 }
-function finishTurn(){
+function finalizeVoiceTurn_(){
   if(turnProcessing) return;
   turnProcessing=true;
   shouldKeepListening=false;
+  speechActive=false;
+
   clearTimeout(silenceTimer);
   clearTimeout(restartTimer);
-  clearTimeout(window.__mgVoiceWatchdog);
-  cancelAnimationFrame(silenceFrame);
-  silenceFrame=null;
+  clearSessionTimers_();
 
-  // abort() makes the Stop/auto-finish deterministic; onend will not restart
-  // because shouldKeepListening is already false.
-  if(recognition)try{recognition.abort()}catch(e){}
-  isListening=false;
-  $('stopBtn').disabled=true;
+  // Stop recognition immediately, but do not depend on onend to perform processing.
+  try{if(recognition)recognition.abort()}catch(e){}
 
   commitCurrentRecognitionSession_();
   const t=turnTranscript.trim();
+
   sessionFinalText='';
   sessionInterimText='';
   turnTranscript='';
+  isListening=false;
+  $('stopBtn').disabled=true;
 
   if(!t){
     turnProcessing=false;
     $('startBtn').disabled=false;
-    status('No speech detected.');
+    status('No speech captured.');
     render();
     return;
   }
 
   if(currentMode==='answer' && phoneMode){
     const digits=normalizeSpokenDigits_(t);
+
     if(!validEgyptianMobileDigits_(digits)){
+      turnProcessing=false;
       phoneAttempts++;
-      render();
       $('questionText').textContent='الرقم مش واضح أو ناقص. قول رقم الموبايل رقم رقم.';
-      status('قول رقم الموبايل رقم رقم مرة كمان.');
+      render();
       speak('الرقم مش واضح أو ناقص. قول رقم الموبايل رقم رقم، من فضلك.',true);
       return;
     }
-    // Explicit phone answer: never let Gemini reconstruct it from the whole story.
+
     conversation.push('ANSWER: PHONE '+digits);
     phoneMode=false;
     phoneAttempts=0;
@@ -377,14 +397,13 @@ function finishTurn(){
 
   if(currentMode==='answer'){
     status('براجع الإجابة بسرعة...');
+
     correctAnswerContext_(t).then(corrected=>{
       conversation.push('ANSWER: '+corrected);
-      correctedLiveText='';
       render();
       processConversation();
     }).catch(()=>{
       conversation.push('ANSWER: '+t);
-      correctedLiveText='';
       render();
       processConversation();
     });
@@ -396,25 +415,14 @@ function finishTurn(){
   render();
   processConversation();
 }
+
+function finishTurn(){
+  finalizeVoiceTurn_();
+}
+
 function stopNow(){
-  clearTimeout(silenceTimer);
-  clearTimeout(restartTimer);
-  clearTimeout(window.__mgVoiceWatchdog);
-  shouldKeepListening=false;
-
-  commitCurrentRecognitionSession_();
-  const t=turnTranscript.trim();
-
-  if(t){
-    finishTurn();
-    return;
-  }
-
-  if(recognition)try{recognition.abort()}catch(e){}
-  isListening=false;
-  $('startBtn').disabled=false;
-  $('stopBtn').disabled=true;
-  status('Stopped. No speech captured.');
+  // Manual button always finalizes the complete accumulated turn.
+  finalizeVoiceTurn_();
 }
 
 function makeSession(){return 's'+Date.now().toString(36)+Math.random().toString(36).slice(2,10)}
@@ -588,6 +596,7 @@ function reset(){
   clearTimeout(silenceTimer);
   clearTimeout(restartTimer);
   clearTimeout(liveCorrectionTimer);
+  clearSessionTimers_();
   clearTimeout(window.__mgVoiceWatchdog);
   requestBusy=false;
   turnProcessing=false;
