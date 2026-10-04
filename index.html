@@ -18,7 +18,7 @@
 <div id="transcript" class="transcript">No speech captured yet.</div>
 <div class="buttons">
 <button id="startBtn" class="start" type="button">🎙️ Start Voice</button>
-<button id="stopBtn" class="stop" type="button" disabled>⏹ Stop / Process</button>
+<button id="stopBtn" class="stop" type="button" disabled>⏹ Finish / Process</button>
 <button id="resetBtn" class="reset" type="button">↺ Reset</button>
 </div>
 <div id="status" class="status"></div><div id="error" class="error hidden"></div>
@@ -32,6 +32,7 @@ const CHUNK_SIZE=900;
 let recognition=null,isListening=false,shouldKeepListening=false,voiceEnabled=false;
 let finalText='',interimText='',correctedLiveText='',silenceTimer=null,restartTimer=null,currentMode='call',questionText='',conversation=[];
 let liveCorrectionTimer=null,liveCorrectionSeq=0;
+let requestBusy=false,turnProcessing=false,lastSpeechActivityAt=0,questionIntroPlayed=false,newLeadIntroPending=false;
 let micStream=null,audioContext=null,analyser=null,silenceFrame=null,lastVoiceAt=0,heardSpeech=false,phoneMode=false,phoneAttempts=0;
 const $=id=>document.getElementById(id);
 function status(t){$('status').textContent=t||''}function showError(t){$('error').textContent=t||'';$('error').classList.remove('hidden')}function clearError(){$('error').textContent='';$('error').classList.add('hidden')}
@@ -69,52 +70,28 @@ function stopMicMonitor(){
 
 function scheduleRecognitionSilence(){
   clearTimeout(silenceTimer);
+
+  const text=(finalText+' '+interimText).trim();
+  if(!shouldKeepListening || requestBusy || !text) return;
+
   silenceTimer=setTimeout(()=>{
-    if(!shouldKeepListening || requestBusy) return;
-    const text=(finalText+' '+interimText).trim();
-    if(heardSpeech && text){
-      finishTurn();
+    if(!shouldKeepListening || requestBusy || turnProcessing) return;
+
+    const current=(finalText+' '+interimText).trim();
+    if(!heardSpeech || !current){
+      return;
     }
+
+    // If new recognition activity arrived during the timer, wait another full 3s.
+    if(lastSpeechActivityAt && Date.now()-lastSpeechActivityAt < SILENCE_MS){
+      scheduleRecognitionSilence();
+      return;
+    }
+
+    finishTurn();
   },SILENCE_MS);
 }
 
-
-async function correctAnswerContext_(raw){
-  const q=String(questionText||'').trim();
-  const a=String(raw||'').trim();
-  if(!q || !a || phoneMode) return a;
-
-  const nq=q.toLowerCase();
-  const na=a.toLowerCase().trim();
-
-  // High-confidence ASR aliases first. This prevents Gemini from being
-  // forced to guess common real-estate words.
-  if(/المكان|المشروع|location|project/.test(nq)){
-    if(/^(up to one|up town|uptown|اب تاون|ابتاون|أب تاون|ابتون)[.!؟ ]*$/i.test(na)) return 'Uptown Cairo';
-  }
-  if(/المصدر|source/.test(nq)){
-    if(/^(اليمنت|المنت|element|إليمنت|المنت)[.!؟ ]*$/i.test(na)) return 'Element';
-  }
-  if(/نوع الوحدة|الوحدة|unit type/.test(nq)){
-    if(/^(ستاندالون|ستاند الون|stand alone|standalone)[.!؟ ]*$/i.test(na)) return 'Standalone';
-  }
-  if(/ميعاد التسليم|تاريخ التسليم|delivery/.test(nq)){
-    if(/استلام فوري|فورى|فوري|ready to move/i.test(na)) return 'استلام فوري';
-  }
-
-  try{
-    const data=await jsonpRequest({api:'voiceCorrectAnswer',question:q,answer:a},12000);
-    if(data&&data.success&&data.corrected) return String(data.corrected).trim();
-  }catch(e){}
-  return a;
-}
-
-function queueLiveCorrection(segment){
-  clearTimeout(liveCorrectionTimer);
-  const text=String(segment||'').trim();
-  if(!text || currentMode!=='call' || phoneMode) return;
-  liveCorrectionTimer=setTimeout(()=>correctLiveSegment_(text),650);
-}
 
 function buildRecognition(){
   const C=ctor();
@@ -175,6 +152,7 @@ function buildRecognition(){
     const live=(finalText+' '+interimText).trim();
     if(live){
       heardSpeech=true;
+      lastSpeechActivityAt=Date.now();
       clearTimeout(silenceTimer);
       scheduleRecognitionSilence();
     }
@@ -249,34 +227,31 @@ function buildRecognition(){
   r.onend=()=>{
     isListening=false;
 
-    // If we already have speech text, let the 3-second silence timer
-    // decide when to finish. Otherwise restart recognition quietly.
-    if(shouldKeepListening){
+    if(shouldKeepListening && !requestBusy){
       const text=(finalText+' '+interimText).trim();
 
-      if(text){
-        scheduleRecognitionSilence();
-      }
+      if(text) scheduleRecognitionSilence();
 
       clearTimeout(restartTimer);
       restartTimer=setTimeout(()=>{
-        if(!shouldKeepListening || isListening || requestBusy) return;
+        if(!shouldKeepListening || isListening || requestBusy || turnProcessing) return;
         try{
           recognition.start();
         }catch(e){
-          // A start while Chromium is still shutting down can throw.
           clearTimeout(restartTimer);
           restartTimer=setTimeout(()=>{
-            if(!shouldKeepListening || isListening || requestBusy) return;
-            try{recognition.start()}catch(err){
-              showError('Speech Recognition stopped responding. Press Start Voice once to restart it.');
+            if(!shouldKeepListening || isListening || requestBusy || turnProcessing) return;
+            try{
+              recognition.start();
+            }catch(err){
               shouldKeepListening=false;
               $('startBtn').disabled=false;
               $('stopBtn').disabled=true;
+              showError('Speech Recognition stopped responding. Press Start Voice to restart.');
             }
-          },800);
+          },900);
         }
-      },350);
+      },450);
     }else{
       $('stopBtn').disabled=true;
     }
@@ -292,6 +267,9 @@ function startListening(){
 
   clearTimeout(silenceTimer);
   clearTimeout(restartTimer);
+  turnProcessing=false;
+  lastSpeechActivityAt=0;
+  // A new call/clarification sequence gets one spoken intro before questions.
 
   // Fresh text buffer for every answer/turn.
   finalText='';
@@ -312,11 +290,18 @@ function startListening(){
   }
 }
 function finishTurn(){
+  if(turnProcessing) return;
+  turnProcessing=true;
   shouldKeepListening=false;
   clearTimeout(silenceTimer);
+  clearTimeout(restartTimer);
+  clearTimeout(window.__mgVoiceWatchdog);
   cancelAnimationFrame(silenceFrame);
   silenceFrame=null;
-  if(recognition)try{recognition.stop()}catch(e){}
+
+  // abort() makes the Stop/auto-finish deterministic; onend will not restart
+  // because shouldKeepListening is already false.
+  if(recognition)try{recognition.abort()}catch(e){}
   isListening=false;
   $('stopBtn').disabled=true;
 
@@ -324,6 +309,7 @@ function finishTurn(){
   finalText=''; interimText='';
 
   if(!t){
+    turnProcessing=false;
     $('startBtn').disabled=false;
     status('No speech detected.');
     render();
@@ -336,7 +322,7 @@ function finishTurn(){
       phoneAttempts++;
       render();
       $('questionText').textContent='الرقم مش واضح أو ناقص. قول رقم الموبايل رقم رقم.';
-      status('Please repeat the mobile number digit by digit.');
+      status('قول رقم الموبايل رقم رقم مرة كمان.');
       speak('الرقم مش واضح أو ناقص. قول رقم الموبايل رقم رقم، من فضلك.',true);
       return;
     }
@@ -350,9 +336,14 @@ function finishTurn(){
   }
 
   if(currentMode==='answer'){
-    status('Checking your answer...');
+    status('براجع الإجابة بسرعة...');
     correctAnswerContext_(t).then(corrected=>{
       conversation.push('ANSWER: '+corrected);
+      correctedLiveText='';
+      render();
+      processConversation();
+    }).catch(()=>{
+      conversation.push('ANSWER: '+t);
       correctedLiveText='';
       render();
       processConversation();
@@ -366,20 +357,65 @@ function finishTurn(){
   processConversation();
 }
 function stopNow(){
-  shouldKeepListening=false;
   clearTimeout(silenceTimer);
-  cancelAnimationFrame(silenceFrame);
-  silenceFrame=null;
-  if(recognition)try{recognition.stop()}catch(e){}
-  stopMicMonitor();
+  clearTimeout(restartTimer);
+  clearTimeout(window.__mgVoiceWatchdog);
+  shouldKeepListening=false;
+
+  const t=(finalText+' '+interimText).trim();
+
+  if(t){
+    finishTurn();
+    return;
+  }
+
+  if(recognition)try{recognition.abort()}catch(e){}
   isListening=false;
   $('startBtn').disabled=false;
   $('stopBtn').disabled=true;
-  status('Stopped.');
+  status('Stopped. No speech captured.');
 }
+
 function makeSession(){return 's'+Date.now().toString(36)+Math.random().toString(36).slice(2,10)}
 function jsonpRequest(params,timeoutMs=20000){return new Promise((resolve,reject)=>{const cb='mgVoiceCb_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7);let done=false;const script=document.createElement('script');const query=new URLSearchParams({...params,callback:cb});const timer=setTimeout(()=>finish(new Error('CRM request timed out.')),timeoutMs);function cleanup(){clearTimeout(timer);try{script.remove()}catch(e){}try{delete window[cb]}catch(e){window[cb]=undefined}}function finish(value,err){if(done)return;done=true;cleanup();err?reject(err):resolve(value)}window[cb]=data=>finish(data);script.onerror=()=>finish(null,new Error('Could not connect to MG RESALE.'));script.src=API+'?'+query.toString();document.head.appendChild(script)})}
-async function processConversation(){if(!conversation.length)return;status('Connecting to MG RESALE...');$('startBtn').disabled=true;const transcript=conversation.join('\n');const session=makeSession();try{const chunks=[];for(let i=0;i<transcript.length;i+=CHUNK_SIZE)chunks.push(transcript.slice(i,i+CHUNK_SIZE));for(let i=0;i<chunks.length;i++){let ok=false;for(let attempt=0;attempt<2&&!ok;attempt++){const r=await jsonpRequest({api:'voiceChunk',session,index:i,total:chunks.length,chunk:chunks[i]});ok=!!(r&&r.ok);if(!ok)await new Promise(x=>setTimeout(x,400))}if(!ok)throw new Error('Could not upload the voice conversation.')}status('MG RESALE is analyzing the conversation...');let result=null;for(let attempt=0;attempt<3;attempt++){result=await jsonpRequest({api:'voiceProcess',session});if(result&&result.retry){await new Promise(x=>setTimeout(x,500));continue}break}handleResult(result)}catch(e){showError(e.message||String(e));status('');$('startBtn').disabled=false}}
+
+async function correctAnswerContext_(raw){
+  const q=String(questionText||'').trim();
+  const a=String(raw||'').trim();
+  if(!q || !a || phoneMode) return a;
+
+  try{
+    const data=await jsonpRequest({
+      api:'voiceCorrectAnswer',
+      question:q,
+      answer:a
+    },12000);
+
+    if(data && data.success && data.corrected){
+      return String(data.corrected).trim();
+    }
+  }catch(e){}
+
+  return a;
+}
+
+async function processConversation(){
+  if(requestBusy || !conversation.length) return;
+  requestBusy=true;
+  status('Connecting to MG RESALE...');
+  $('startBtn').disabled=true;
+  const transcript=conversation.join('\n');
+  const session=makeSession();
+  try{const chunks=[];for(let i=0;i<transcript.length;i+=CHUNK_SIZE)chunks.push(transcript.slice(i,i+CHUNK_SIZE));for(let i=0;i<chunks.length;i++){let ok=false;for(let attempt=0;attempt<2&&!ok;attempt++){const r=await jsonpRequest({api:'voiceChunk',session,index:i,total:chunks.length,chunk:chunks[i]});ok=!!(r&&r.ok);if(!ok)await new Promise(x=>setTimeout(x,400))}if(!ok)throw new Error('Could not upload the voice conversation.')}status('MG RESALE is analyzing the conversation...');let result=null;for(let attempt=0;attempt<3;attempt++){result=await jsonpRequest({api:'voiceProcess',session});if(result&&result.retry){await new Promise(x=>setTimeout(x,500));continue}break}handleResult(result)
+  }catch(e){
+    requestBusy=false;
+    turnProcessing=false;
+    showError(e.message||String(e));
+    status('');
+    $('startBtn').disabled=false;
+    $('stopBtn').disabled=true;
+  }
+}
 
 function isPhoneQuestion_(text){
   const s=String(text||'').toLowerCase();
@@ -408,14 +444,30 @@ function validEgyptianMobileDigits_(d){
   if(d.length===10 && d.startsWith('1'))d='0'+d;
   return /^01[0125][0-9]{8}$/.test(d);
 }
+function speakQuestionAfterIntro_(questionTextToSpeak){
+  // Keep the user's requested tone natural and Egyptian.
+  const intro = 'بص يا عزيزي، فيه شوية حاجات ناقصة محتاج ردك عليهم عشان أضيف الليد بشكل كامل. هسألك عليهم واحدة واحدة. لو هتديني المعلومات، أهلاً وسهلاً وهكمّل معاك. ولو مش متاحة دلوقتي، عادي، ارجعلي بالمعلومات دي بعدين ونكمّل.';
+
+  if(newLeadIntroPending && !questionIntroPlayed){
+    questionIntroPlayed=true;
+    newLeadIntroPending=false;
+    speak(intro,false);
+    setTimeout(()=>{
+      if(!voiceEnabled || requestBusy) return;
+      speak(questionTextToSpeak,true);
+    }, Math.max(3200, intro.length*45));
+    return;
+  }
+
+  speak(questionTextToSpeak,true);
+}
+
 function ask(text){
   questionText=text||'من فضلك اديني المعلومة الناقصة.';
   phoneMode=isPhoneQuestion_(questionText);
   phoneAttempts=0;
 
-  // IMPORTANT: store the CRM question in the conversation.
-  // Without this, Gemini receives "ANSWER: ..." but cannot know which
-  // missing field the answer belongs to (Location, Source, Delivery Date, etc.).
+  // Store the exact CRM question in the conversation.
   const qLine='QUESTION: '+questionText;
   const last=conversation.length?conversation[conversation.length-1]:'';
   if(last!==qLine) conversation.push(qLine);
@@ -424,6 +476,7 @@ function ask(text){
     ? 'قول رقم الموبايل رقم رقم، من غير كلام تاني.'
     : questionText;
   $('question').classList.remove('hidden');
+
   currentMode='answer';
   $('modeTitle').textContent='CRM Question';
   $('modeText').textContent=phoneMode
@@ -431,9 +484,11 @@ function ask(text){
     : 'Listen to the question, then answer naturally.';
   render();
 
-  speak(phoneMode
+  const questionToSpeak=phoneMode
     ? 'قول رقم الموبايل رقم رقم، من فضلك.'
-    : questionText,true);
+    : questionText;
+
+  speakQuestionAfterIntro_(questionToSpeak);
 }
 function arabicQuestion(data){
   if(data.question)return data.question;
@@ -442,10 +497,14 @@ function arabicQuestion(data){
   if(data.type==='NEW_CLIENT_MISSING_DATA')return 'العميل جديد. محتاج اسم العميل ورقم الموبايل. قولهم لي من فضلك.';
   if(data.type==='SOURCE_REQUIRED')return 'العميل جديد. مصدر الليد إيه؟ قول Element، Direct، Adel، FB، Cold Call، أو Refell.';
   if(data.type==='CLIENT_NOT_FOUND')return 'مش قادر أحدد العميل. قول لي اسم العميل أو رقم الموبايل.';
-  if(data.type==='MULTIPLE_CLIENTS')return 'فيه أكتر من عميل بنفس الاسم. قول لي رقم الموبايل.';
+  if(data.type==='MULTIPLE_CLIENTS')return data.message||'فيه أكتر من تطابق. قولّي اسم العميل أو آخر أربع أرقام من الموبايل.';
   return null;
 }
-function handleResult(data){if(!data){showError('Empty response from CRM.');$('startBtn').disabled=false;return}if(data.success){
+function handleResult(data){
+  requestBusy=false;
+  turnProcessing=false;
+  if(!data){showError('Empty response from CRM.');$('startBtn').disabled=false;return}
+  if(data.success){
   finalText='';interimText='';
   $('question').classList.add('hidden');
   questionText='';
@@ -462,7 +521,16 @@ function handleResult(data){if(!data){showError('Empty response from CRM.');$('s
   speak(data.message||'تم تصحيح وحفظ قصة المكالمة بنجاح.',false);
   $('startBtn').disabled=false;
   return;
-}const q=arabicQuestion(data);if(q){ask(q);return}showError(data.message||'CRM could not process the feedback.');$('startBtn').disabled=false;status('')}
+}
+  if(data.newLeadClarification===true){
+    newLeadIntroPending=true;
+  }
+  const q=arabicQuestion(data);
+  if(q){ask(q);return}
+  showError(data.message||'CRM could not process the feedback.');
+  $('startBtn').disabled=false;
+  status('');
+}
 function startSession(){
   clearError();
   if(!ctor()){
@@ -479,6 +547,12 @@ function reset(){
   clearTimeout(silenceTimer);
   clearTimeout(restartTimer);
   clearTimeout(liveCorrectionTimer);
+  clearTimeout(window.__mgVoiceWatchdog);
+  requestBusy=false;
+  turnProcessing=false;
+  lastSpeechActivityAt=0;
+  questionIntroPlayed=false;
+  newLeadIntroPending=false;
   if(recognition)try{recognition.abort()}catch(e){}
   try{speechSynthesis.cancel()}catch(e){}
   recognition=null;
