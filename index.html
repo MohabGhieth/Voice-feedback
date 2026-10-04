@@ -13,7 +13,7 @@
 <main class="app">
 <div class="brand"><h1>MG RESALE</h1><p>Voice Mode — Final</p></div>
 <section class="card">
-<div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically.</span></div>
+<div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. After 3 seconds of real silence, the CRM processes your turn automatically.</span></div>
 <div id="question" class="question hidden"><small>CRM asks:</small><strong id="questionText"></strong></div>
 <div id="transcript" class="transcript">No speech captured yet.</div>
 <div class="buttons">
@@ -33,7 +33,8 @@ let recognition=null,isListening=false,shouldKeepListening=false,voiceEnabled=fa
 let finalText='',interimText='',correctedLiveText='',silenceTimer=null,restartTimer=null,currentMode='call',questionText='',conversation=[];
 let liveCorrectionTimer=null,liveCorrectionSeq=0;
 let requestBusy=false,turnProcessing=false,lastSpeechActivityAt=0,questionIntroPlayed=false,newLeadIntroPending=false;
-let micStream=null,audioContext=null,analyser=null,silenceFrame=null,lastVoiceAt=0,heardSpeech=false,phoneMode=false,phoneAttempts=0;
+let speechActive=false,heardSpeech=false,phoneMode=false,phoneAttempts=0;
+let lastFinalResultAt=0;
 const $=id=>document.getElementById(id);
 function status(t){$('status').textContent=t||''}function showError(t){$('error').textContent=t||'';$('error').classList.remove('hidden')}function clearError(){$('error').textContent='';$('error').classList.add('hidden')}
 function render(){
@@ -72,18 +73,21 @@ function scheduleRecognitionSilence(){
   clearTimeout(silenceTimer);
 
   const text=(finalText+' '+interimText).trim();
-  if(!shouldKeepListening || requestBusy || !text) return;
+  if(!shouldKeepListening || requestBusy || turnProcessing || !text) return;
+
+  // Do not count the 3 seconds until SpeechRecognition has reported that
+  // actual sound/speech has ended. This prevents cutting the user off
+  // in a normal pause between sentences.
+  if(speechActive) return;
 
   silenceTimer=setTimeout(()=>{
     if(!shouldKeepListening || requestBusy || turnProcessing) return;
 
     const current=(finalText+' '+interimText).trim();
-    if(!heardSpeech || !current){
-      return;
-    }
+    if(!heardSpeech || !current) return;
 
-    // If new recognition activity arrived during the timer, wait another full 3s.
-    if(lastSpeechActivityAt && Date.now()-lastSpeechActivityAt < SILENCE_MS){
+    // If speech/sound restarted during the timer, wait again.
+    if(speechActive){
       scheduleRecognitionSilence();
       return;
     }
@@ -113,19 +117,25 @@ function buildRecognition(){
   };
 
   r.onaudiostart=()=>{
+    speechActive=true;
+    lastSpeechActivityAt=Date.now();
     status(currentMode==='answer'
       ? 'Microphone active — listening for your answer...'
       : 'Microphone active — speak naturally.');
   };
 
   r.onsoundstart=()=>{
+    speechActive=true;
     heardSpeech=true;
+    lastSpeechActivityAt=Date.now();
     clearTimeout(silenceTimer);
     status('I hear you...');
   };
 
   r.onspeechstart=()=>{
+    speechActive=true;
     heardSpeech=true;
+    lastSpeechActivityAt=Date.now();
     clearTimeout(silenceTimer);
     status('Listening to your speech...');
   };
@@ -142,6 +152,7 @@ function buildRecognition(){
       if(result.isFinal){
         finalText += t+' ';
         newFinal += t+' ';
+        lastFinalResultAt=Date.now();
       }else{
         newInterim += t+' ';
       }
@@ -154,11 +165,8 @@ function buildRecognition(){
       heardSpeech=true;
       lastSpeechActivityAt=Date.now();
       clearTimeout(silenceTimer);
-      scheduleRecognitionSilence();
     }
 
-    // AI correction only for final segments of the main call.
-    // Never run it on phone answers.
     if(newFinal.trim() && currentMode==='call' && !phoneMode){
       queueLiveCorrection(newFinal);
     }
@@ -167,47 +175,48 @@ function buildRecognition(){
   };
 
   r.onspeechend=()=>{
-    // SpeechRecognition has detected the end of speech.
-    // Do not process immediately; wait the full requested 3 seconds.
+    speechActive=false;
+    lastSpeechActivityAt=Date.now();
+
+    // Start the full 3-second countdown only now.
     if(shouldKeepListening && (finalText+' '+interimText).trim()){
       scheduleRecognitionSilence();
     }
   };
 
   r.onsoundend=()=>{
+    speechActive=false;
+    lastSpeechActivityAt=Date.now();
+
     if(shouldKeepListening && (finalText+' '+interimText).trim()){
       scheduleRecognitionSilence();
     }
   };
 
   r.onaudioend=()=>{
-    if(shouldKeepListening && (finalText+' '+interimText).trim()){
+    // Do not process just because the browser ended an audio segment.
+    // onend may happen because Chromium rotates its recognition session.
+    if(!speechActive && shouldKeepListening && (finalText+' '+interimText).trim()){
       scheduleRecognitionSilence();
     }
   };
 
   r.onerror=e=>{
     const x=String(e?.error||'unknown');
+
+    if(x==='no-speech'){
+      if(shouldKeepListening) status('Still listening — go ahead and finish your thought.');
+      return;
+    }
+
+    if(x==='aborted') return;
+
     const messages={
-      'not-allowed':'Speech recognition permission was blocked. Microphone permission is separate from Speech Recognition permission.',
+      'not-allowed':'Speech recognition permission was blocked for this site.',
       'service-not-allowed':'The browser speech-recognition service is not allowed.',
       'audio-capture':'The browser cannot access the microphone for Speech Recognition.',
-      'network':'Speech Recognition network service failed. Check the internet connection.',
-      'no-speech':'No speech was detected. Keep speaking normally.',
-      'aborted':'Speech recognition was interrupted.'
+      'network':'Speech Recognition network service failed. Check the internet connection.'
     };
-
-    // "no-speech" is normal during a long pause; don't kill the session.
-    if(x==='no-speech'){
-      if(shouldKeepListening){
-        status('I did not detect speech yet — keep speaking...');
-      }
-      return;
-    }
-
-    if(x==='aborted'){
-      return;
-    }
 
     if(x==='not-allowed'||x==='service-not-allowed'||x==='audio-capture'){
       shouldKeepListening=false;
@@ -227,14 +236,13 @@ function buildRecognition(){
   r.onend=()=>{
     isListening=false;
 
-    if(shouldKeepListening && !requestBusy){
-      const text=(finalText+' '+interimText).trim();
-
-      if(text) scheduleRecognitionSilence();
-
+    // Chromium may close a recognition session after a while.
+    // Restart it without touching the accumulated current turn.
+    if(shouldKeepListening && !requestBusy && !turnProcessing){
       clearTimeout(restartTimer);
       restartTimer=setTimeout(()=>{
         if(!shouldKeepListening || isListening || requestBusy || turnProcessing) return;
+
         try{
           recognition.start();
         }catch(e){
@@ -249,7 +257,7 @@ function buildRecognition(){
               $('stopBtn').disabled=true;
               showError('Speech Recognition stopped responding. Press Start Voice to restart.');
             }
-          },900);
+          },800);
         }
       },450);
     }else{
@@ -269,6 +277,9 @@ function startListening(){
   clearTimeout(restartTimer);
   turnProcessing=false;
   lastSpeechActivityAt=0;
+  lastFinalResultAt=0;
+  speechActive=false;
+  heardSpeech=false;
   // A new call/clarification sequence gets one spoken intro before questions.
 
   // Fresh text buffer for every answer/turn.
@@ -293,6 +304,7 @@ function finishTurn(){
   if(turnProcessing) return;
   turnProcessing=true;
   shouldKeepListening=false;
+  speechActive=false;
   clearTimeout(silenceTimer);
   clearTimeout(restartTimer);
   clearTimeout(window.__mgVoiceWatchdog);
@@ -361,6 +373,8 @@ function stopNow(){
   clearTimeout(restartTimer);
   clearTimeout(window.__mgVoiceWatchdog);
   shouldKeepListening=false;
+  speechActive=false;
+  clearTimeout(silenceTimer);
 
   const t=(finalText+' '+interimText).trim();
 
@@ -551,6 +565,9 @@ function reset(){
   requestBusy=false;
   turnProcessing=false;
   lastSpeechActivityAt=0;
+  lastFinalResultAt=0;
+  speechActive=false;
+  heardSpeech=false;
   questionIntroPlayed=false;
   newLeadIntroPending=false;
   if(recognition)try{recognition.abort()}catch(e){}
@@ -568,7 +585,7 @@ function reset(){
   $('startBtn').disabled=false;
   $('stopBtn').disabled=true;
   $('modeTitle').textContent='Ready';
-  $('modeText').textContent='Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically.';
+  $('modeText').textContent='Tap Start Voice once. Speak naturally. After 3 seconds of real silence, the CRM processes your turn automatically.';
   render();
   status('Ready.');
   clearError();
