@@ -93,15 +93,35 @@ function activeSilenceMs_(){
 function maskConversationForDisplay_(line){
   let s=String(line||'');
 
-  // Phone numbers are internal CRM identity data. Never display them inside
-  // the visible conversation log.
+  // Phone identity is internal CRM data. Never expose it in the visible story.
   if(/^ANSWER\s*:\s*PHONE\b/i.test(s)){
-    return 'ANSWER: PHONE [captured privately]';
+    return '';
   }
 
-  // Also mask full Egyptian mobile numbers wherever a CRM answer happens to echo one.
-  s=s.replace(/(?:\+?20[\s().-]*)?01(?:[\s().-]*\d){9}/g,'[phone hidden]');
-  return s;
+  // Remove the number itself first.
+  s=s.replace(/(?:\+?20[\s().-]*)?01(?:[\s().-]*\d){9}/g,'');
+  s=s.replace(/(?:\+?20[\s().-]*)?٠١(?:[\s().-]*[٠-٩]){9}/g,'');
+
+  // Then remove the surrounding identity phrase, including variants that
+  // commonly survive ASR: "رقم تليفونه", "رقم تليفون", "رقم الموبايل", etc.
+  s=s.replace(
+    /(?:رقم\s*(?:الموبايل|الموبايل بتاعه|التليفون|التليفون بتاعه|الهاتف|تليفونه|تلفونه)|(?:الموبايل|التليفون|الهاتف)\s*(?:بتاعه|بتاعه هو|بتاع العميل))\s*(?:(?:هو|هي|:|-)\s*)?/gi,
+    ''
+  );
+
+  // Remove any leftover explicit "phone hidden" marker from older turns.
+  s=s.replace(/\[phone hidden\]|\[رقم مخفي\]/gi,'');
+
+  // Remove last-4 identity references if they were spoken only for lookup.
+  s=s.replace(
+    /(?:آخر|اخر)\s*(?:أربع|اربعة|4|four)\s*(?:أرقام|ارقام|digits)?\s*(?:هو|هي|:|=)?\s*(?:\d{4}|[٠-٩]{4})?/gi,
+    ''
+  );
+
+  return s
+    .replace(/[ \t]{2,}/g,' ')
+    .replace(/\s+([،,.;:؟?!])/g,'$1')
+    .trim();
 }
 
 function render(){
@@ -110,7 +130,8 @@ function render(){
       return !/^QUESTION\s*:/i.test(String(line||'')) &&
              !/^ANSWER\s*:/i.test(String(line||''));
     })
-    .map(maskConversationForDisplay_);
+    .map(maskConversationForDisplay_)
+    .filter(Boolean);
 
   const live=currentVoiceText_();
   if(live) rows.push('VOICE (LIVE): '+live);
