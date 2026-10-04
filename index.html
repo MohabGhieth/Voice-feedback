@@ -31,6 +31,7 @@ const SILENCE_MS=3000;
 const ANSWER_SILENCE_MS=15000;
 const PHONE_SILENCE_MS=15000;
 const CHUNK_SIZE=900;
+const CHUNK_CONCURRENCY=6;
 
 let recognition=null;
 let recognitionStartTimer=null;
@@ -258,44 +259,45 @@ async function speak(text,listenAfter){
   clearInactivityTimer_();
   stopVAD_();
 
-  // Primary TTS: Gemini 3.8 Flash TTS, tuned for Egyptian Arabic.
+  const request=jsonpRequest({
+    api:'voiceSpeak',
+    text:String(text).trim()
+  },10000);
+
+  let fallbackTimer;
+  let finished=false;
+
+  const fallbackPromise=new Promise(resolve=>{
+    fallbackTimer=setTimeout(()=>{
+      if(finished) return;
+      finished=true;
+      resolve(null);
+    },2200);
+  });
+
   try{
-    const data=await jsonpRequest({
-      api:'voiceSpeak',
-      text:String(text).trim()
-    },20000);
+    const winner=await Promise.race([
+      request.then(data=>({data:data})).catch(()=>({data:null})),
+      fallbackPromise.then(()=>({data:null,fallback:true}))
+    ]);
 
-    if(data && data.success && data.audioBase64){
-      const audio=new Audio(
-        'data:'+(data.mimeType||'audio/wav')+';base64,'+data.audioBase64
-      );
+    clearTimeout(fallbackTimer);
 
-      status('CRM is speaking...');
-
+    if(winner&&winner.data&&winner.data.success&&winner.data.audioBase64){
+      const audio=new Audio('data:'+(winner.data.mimeType||'audio/wav')+';base64,'+winner.data.audioBase64);
+      status('المساعد بيتكلم...');
       audio.onended=()=>{
         vadSuppressed=false;
-        lastAudibleAt=Date.now();
-
-        if(listenAfter && voiceEnabled){
-          setTimeout(()=>startListening_(true),250);
-        }
+        if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),300);
       };
-
-      audio.onerror=()=>{
-        vadSuppressed=false;
-        fallbackSpeech_(text,listenAfter);
-      };
-
+      audio.onerror=()=>fallbackSpeech_(text,listenAfter);
       try{
         await audio.play();
         return;
-      }catch(playError){
-        // Browser autoplay/media policy blocked the generated audio.
-        // Fall back to browser Arabic speech without breaking the workflow.
-      }
+      }catch(e){}
     }
   }catch(e){
-    // Network/TTS failure must never stop the CRM flow.
+    clearTimeout(fallbackTimer);
   }
 
   fallbackSpeech_(text,listenAfter);
@@ -304,11 +306,10 @@ async function speak(text,listenAfter){
 function fallbackSpeech_(text,listenAfter){
   if(!('speechSynthesis' in window)){
     vadSuppressed=false;
-    if(listenAfter && voiceEnabled) setTimeout(()=>startListening_(true),150);
+    if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),150);
     return;
   }
-
-  try{ speechSynthesis.cancel(); }catch(e){}
+  try{speechSynthesis.cancel();}catch(e){}
 
   const u=new SpeechSynthesisUtterance(text);
   u.lang='ar-EG';
@@ -317,28 +318,18 @@ function fallbackSpeech_(text,listenAfter){
   u.volume=1;
 
   const voices=speechSynthesis.getVoices()||[];
-  const ar=voices.find(v=>/^ar[-_]EG/i.test(v.lang||'')) ||
-           voices.find(v=>/^ar[-_]/i.test(v.lang||''));
-  if(ar) u.voice=ar;
+  const v=voices.find(x=>/^ar-EG$/i.test(x.lang||''))||voices.find(x=>/^ar[-_]/i.test(x.lang||''));
+  if(v) u.voice=v;
 
-  u.onstart=()=>status('CRM is speaking...');
-
+  u.onstart=()=>status('المساعد بيتكلم...');
   u.onend=()=>{
     vadSuppressed=false;
-    lastAudibleAt=Date.now();
-
-    if(listenAfter && voiceEnabled){
-      setTimeout(()=>startListening_(true),250);
-    }
+    if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),250);
   };
-
   u.onerror=()=>{
     vadSuppressed=false;
-    if(listenAfter && voiceEnabled){
-      setTimeout(()=>startListening_(true),250);
-    }
+    if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),250);
   };
-
   speechSynthesis.speak(u);
 }
 
@@ -735,7 +726,7 @@ function startSession(){
 
   $('modeTitle').textContent='Starting';
   $('modeText').textContent='سامعك. اتكلم براحتك، وأنا هجمع القصة كلها قبل ما أحفظها.';
-  status('Starting Speech Recognition...');
+  status('ببدأ التسجيل...');
 
   // Reset the startup-attempt counter for this manual Start.
   clearRecognitionWatchdogs_();
@@ -915,28 +906,21 @@ async function processConversation(){
   }
 
   try{
-    for(let i=0;i<chunks.length;i++){
-      await sendConversationChunk_(session,i,chunks.length,chunks[i]);
+    // Upload chunks concurrently instead of one-by-one.
+    for(let start=0; start<chunks.length; start+=CHUNK_CONCURRENCY){
+      const batch=[];
+      for(let i=start;i<Math.min(start+CHUNK_CONCURRENCY,chunks.length);i++){
+        batch.push(sendConversationChunk_(session,i,chunks.length,chunks[i]));
+      }
+      await Promise.all(batch);
     }
 
-    let result=null;
+    status('تمام، الكلام وصل. بثبّت البيانات...');
 
-    // The Apps Script cache may need a moment to expose all chunks.
-    for(let attempt=0;attempt<6;attempt++){
-      result=await jsonpRequest({
-        api:'voiceProcess',
-        session:session
-      },45000);
-
-      if(result && result.retry){
-        status('استلمت الكلام. بثبّت البيانات وببدأ التحليل...');
-        await new Promise(function(resolve){
-          setTimeout(resolve,400+attempt*250);
-        });
-        continue;
-      }
-
-      break;
+    let result=await jsonpRequest({api:'voiceProcess',session:session},30000);
+    if(result&&result.retry){
+      await new Promise(resolve=>setTimeout(resolve,250));
+      result=await jsonpRequest({api:'voiceProcess',session:session},30000);
     }
 
     handleResult(result);
@@ -1126,7 +1110,7 @@ function handleResult(data){
       : [];
 
     render();
-    status('Saved. Ready for the next call.');
+    status('تمام، المكالمة اتحفظت. جاهز للمكالمة اللي بعدها.');
     speak(data.message||'تم حفظ المكالمة بنجاح.',false);
 
     $('startBtn').disabled=false;
@@ -1149,11 +1133,7 @@ function handleResult(data){
 }
 
 function speakQuestionIntroThen_(questionToSpeak){
-  const intro=
-    'بص يا عزيزي، ناقصني شوية بيانات بسيطة عشان أكمّل إضافة الليد بشكل كامل. ' +
-    'هسألك عليهم واحدة واحدة، وإنت رد عليا براحتك، وأنا هكمّل لك الباقي.';
-
-  if(!newLeadIntroPending || questionIntroPlayed){
+  if(!newLeadIntroPending||questionIntroPlayed){
     speak(questionToSpeak,true);
     return;
   }
@@ -1161,12 +1141,11 @@ function speakQuestionIntroThen_(questionToSpeak){
   newLeadIntroPending=false;
   questionIntroPlayed=true;
 
-  speak(intro,false);
+  const combined=
+    'بص، ناقصني كام معلومة صغيرة عشان أكمّل الليد. هسألك عليهم واحدة واحدة، '+
+    'وإنت رد عليا براحتك، ومش هقاطعك. '+questionToSpeak;
 
-  setTimeout(()=>{
-    if(!voiceEnabled || window.__mgRequestBusy) return;
-    speak(questionToSpeak,true);
-  },3200);
+  speak(combined,true);
 }
 
 function ask(text){
