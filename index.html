@@ -269,6 +269,14 @@ function ask(text){
   questionText=text||'من فضلك اديني المعلومة الناقصة.';
   phoneMode=isPhoneQuestion_(questionText);
   phoneAttempts=0;
+
+  // IMPORTANT: store the CRM question in the conversation.
+  // Without this, Gemini receives "ANSWER: ..." but cannot know which
+  // missing field the answer belongs to (Location, Source, Delivery Date, etc.).
+  const qLine='QUESTION: '+questionText;
+  const last=conversation.length?conversation[conversation.length-1]:'';
+  if(last!==qLine) conversation.push(qLine);
+
   $('questionText').textContent=phoneMode
     ? 'قول رقم الموبايل رقم رقم، من غير كلام تاني.'
     : questionText;
@@ -278,6 +286,8 @@ function ask(text){
   $('modeText').textContent=phoneMode
     ? 'Phone mode — قول الأرقام واحدة واحدة.'
     : 'Listen to the question, then answer naturally.';
+  render();
+
   speak(phoneMode
     ? 'قول رقم الموبايل رقم رقم، من فضلك.'
     : questionText,true);
