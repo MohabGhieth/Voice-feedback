@@ -110,6 +110,10 @@ function render(){
   const live=currentVoiceText_();
   if(live) rows.push('VOICE (LIVE): '+live);
 
+  if(correctedLiveText && correctedLiveText!==live){
+    rows.push('AI CORRECTED (LIVE): '+correctedLiveText);
+  }
+
   $('transcript').textContent=rows.length
     ? rows.join('\n\n')
     : 'No speech captured yet.';
@@ -353,6 +357,181 @@ function scheduleRealSilence_(){
 
     finishTurn_('recognition-inactivity');
   },Math.max(350,ms-elapsed));
+}
+
+function createRecognition_(){
+  const C=ctor();
+  if(!C) throw new Error('Speech Recognition is not available. Use current Chrome or Edge.');
+
+  const r=new C();
+
+  // One active microphone consumer only: browser SpeechRecognition.
+  // Phone mode uses one answer session; normal calls stay continuous.
+  r.continuous=!phoneMode;
+  r.interimResults=true;
+  r.maxAlternatives=3;
+  r.lang='ar-EG';
+
+  r.onstart=()=>{
+    isListening=true;
+    $('startBtn').disabled=true;
+    $('stopBtn').disabled=false;
+
+    $('modeTitle').textContent=currentMode==='answer'
+      ? 'Listening for Answer'
+      : 'Listening';
+
+    $('modeText').textContent=currentMode==='answer'
+      ? 'تمام، سامعك. خد وقتك ورد عليا براحتك، ومش هقاطعك.'
+      : 'سامعك. اتكلم براحتك، وأنا هجمع القصة كلها قبل ما أحفظها.';
+
+    status(currentMode==='answer'
+      ? 'Listening for your answer... خد وقتك، وأنا مستنيك تخلص.'
+      : 'Listening... Speak naturally.');
+  };
+
+  r.onresult=e=>{
+    let newestFinal='';
+
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const result=e.results[i];
+      const text=String(result?.[0]?.transcript||'').trim();
+      if(!text) continue;
+
+      if(result.isFinal){
+        turnFinal=(turnFinal+' '+text).replace(/\s+/g,' ').trim();
+        newestFinal=(newestFinal+' '+text).replace(/\s+/g,' ').trim();
+        turnInterim='';
+      }else{
+        // Interim is display-only. It is never appended permanently.
+        turnInterim=text;
+      }
+    }
+
+    if(!newestFinal && !turnInterim) return;
+
+    heardSpeech=true;
+    lastSpeechAt=Date.now();
+    clearTimeout(silenceTimer);
+
+    // Live canonicalization is local/non-blocking.
+    if(currentMode==='call' && !phoneMode){
+      const raw=currentVoiceText_();
+      const corrected=localCorrectLive_(raw);
+      correctedLiveText=(corrected!==raw) ? corrected : '';
+    }
+
+    render();
+
+    // Silence starts only AFTER actual recognition text exists.
+    scheduleRealSilence_();
+
+    // Do not make a network call while the user is still talking.
+    if(newestFinal && currentMode==='call' && !phoneMode){
+      queueLiveCorrection_(newestFinal);
+    }
+  };
+
+  r.onspeechstart=()=>{
+    if(!shouldKeepListening) return;
+    speechActive=true;
+    clearTimeout(silenceTimer);
+    status(currentMode==='answer'
+      ? 'تمام، كمّل إجابتك براحتك...'
+      : 'تمام، كمّل براحتك...');
+  };
+
+  r.onspeechend=()=>{
+    speechActive=false;
+    if(shouldKeepListening && currentVoiceText_()){
+      scheduleRealSilence_();
+    }
+  };
+
+  r.onsoundstart=()=>{
+    if(!shouldKeepListening) return;
+    speechActive=true;
+    clearTimeout(silenceTimer);
+  };
+
+  r.onsoundend=()=>{
+    speechActive=false;
+    if(shouldKeepListening && currentVoiceText_()){
+      scheduleRealSilence_();
+    }
+  };
+
+  r.onaudioend=()=>{
+    // Audio ending does NOT mean the user finished. onend may simply be
+    // Chromium rotating the recognition session.
+  };
+
+  r.onerror=e=>{
+    const err=String(e?.error||'unknown');
+
+    if(err==='aborted') return;
+
+    if(err==='no-speech'){
+      if(shouldKeepListening){
+        status(currentMode==='answer'
+          ? 'لسه سامعك، خد وقتك...'
+          : 'لسه سامعك، كمّل براحتك...');
+      }
+      return;
+    }
+
+    if(err==='network'){
+      status('حصل تقطيع بسيط في التعرف على الكلام... بكمل الاستماع.');
+      return;
+    }
+
+    if(err==='not-allowed'||err==='service-not-allowed'||err==='audio-capture'){
+      shouldKeepListening=false;
+      isListening=false;
+      $('startBtn').disabled=false;
+      $('stopBtn').disabled=true;
+      showError('Speech Recognition error: '+err);
+      status('');
+    }
+  };
+
+  r.onend=()=>{
+    isListening=false;
+
+    // Never finalize from onend. A normal Chrome recognition restart must
+    // continue the same turn.
+    if(shouldKeepListening && !processing){
+      clearTimeout(restartTimer);
+
+      restartTimer=setTimeout(()=>{
+        if(!shouldKeepListening || processing || isListening) return;
+
+        try{
+          recognition=createRecognition_();
+          recognition.start();
+        }catch(e){
+          clearTimeout(restartTimer);
+
+          restartTimer=setTimeout(()=>{
+            if(!shouldKeepListening || processing || isListening) return;
+
+            try{
+              recognition=createRecognition_();
+              recognition.start();
+            }catch(err){
+              shouldKeepListening=false;
+              $('startBtn').disabled=false;
+              $('stopBtn').disabled=true;
+              showError('Speech Recognition could not restart. Press Start Voice once again.');
+              status('');
+            }
+          },700);
+        }
+      },180);
+    }
+  };
+
+  return r;
 }
 
 function startListening_(newTurn){
