@@ -1,672 +1,78 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#07131a">
-  <title>MG RESALE — Voice Mode</title>
-  <style>
-    :root {
-      --bg: #07131a;
-      --card: #0d2029;
-      --text: #f4fbfd;
-      --muted: #9eb5bc;
-      --accent: #6ee7d8;
-      --danger: #ff8f8f;
-      --border: rgba(255,255,255,.10);
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      min-height: 100svh;
-      background: radial-gradient(circle at top, #12303a 0%, var(--bg) 55%, #040b10 100%);
-      color: var(--text);
-      font-family: Arial, Helvetica, sans-serif;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px 14px;
-    }
-    .app { width: 100%; max-width: 620px; }
-    .brand { text-align: center; margin-bottom: 16px; }
-    .brand h1 { margin: 0; font-size: 30px; letter-spacing: .4px; }
-    .brand p { margin: 6px 0 0; color: var(--muted); }
-    .card {
-      background: rgba(13,32,41,.96);
-      border: 1px solid var(--border);
-      border-radius: 24px;
-      padding: 22px;
-    }
-    .mode {
-      border-radius: 15px;
-      padding: 14px 15px;
-      background: rgba(255,255,255,.04);
-      border: 1px solid var(--border);
-      margin-bottom: 14px;
-      line-height: 1.5;
-    }
-    .mode b { color: var(--accent); }
-    .question {
-      border-radius: 17px;
-      padding: 17px;
-      background: rgba(110,231,216,.10);
-      border: 1px solid rgba(110,231,216,.26);
-      margin-bottom: 14px;
-    }
-    .question small { display:block; color: var(--muted); margin-bottom:7px; }
-    .question strong { display:block; font-size:20px; line-height:1.45; }
-    .transcript {
-      min-height: 150px;
-      white-space: pre-wrap;
-      direction: auto;
-      background: #07161d;
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 14px;
-      line-height: 1.55;
-      overflow-wrap: anywhere;
-      margin-bottom: 14px;
-    }
-    .buttons { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-    button {
-      border:0;
-      border-radius:14px;
-      padding:15px 12px;
-      font-size:16px;
-      font-weight:800;
-      cursor:pointer;
-    }
-    .start { background:var(--accent); color:#06211f; }
-    .stop { background:#6f2424; color:white; }
-    .reset { background:#17333d; color:white; }
-    button:disabled { opacity:.55; cursor:not-allowed; }
-    .status { min-height:24px; margin-top:13px; color:var(--muted); font-size:14px; }
-    .error { margin-top:12px; padding:12px 13px; border-radius:12px; color:#ffd7d7; background:rgba(140,31,31,.22); border:1px solid rgba(255,143,143,.28); }
-    .tip { color:var(--muted); font-size:12px; line-height:1.55; margin-top:13px; }
-    .hidden { display:none !important; }
-    @media (max-width:500px) {
-      body { padding: 12px 10px; align-items:flex-start; }
-      .card { padding: 16px; margin-top: 20px; }
-      .brand h1 { font-size: 27px; }
-      .buttons { grid-template-columns:1fr; }
-    }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MG RESALE — Voice CRM</title>
+<style>
+body{margin:0;background:#f5f7f8;font-family:Arial,sans-serif;color:#102018}
+.wrap{max-width:720px;margin:auto;padding:18px}.card{background:#fff;border-radius:18px;padding:20px;box-shadow:0 8px 28px rgba(0,0,0,.08)}
+h1{margin:0 0 8px}.sub{color:#64748b;line-height:1.5}
+button{border:0;border-radius:14px;padding:14px 18px;font-size:17px;font-weight:700;cursor:pointer}
+#start{background:#22c55e;color:#fff;width:100%;margin-top:16px}#process{background:#111827;color:#fff;width:100%;margin-top:10px;display:none}
+#status,#transcript{margin-top:14px;padding:12px;border-radius:12px;line-height:1.6}
+#status{background:#eef2f7;min-height:48px}#transcript{background:#f8fafc;border:1px solid #e2e8f0;min-height:120px;white-space:pre-wrap}
+.ok{background:#ecfdf5!important}.warn{background:#fff7ed!important}.err{background:#fef2f2!important}
+</style>
 </head>
-<body>
-  <main class="app">
-    <div class="brand">
-      <h1>MG RESALE</h1>
-      <p>Voice Mode — V6</p>
-    </div>
-
-    <section class="card">
-      <div class="mode">
-        <b id="modeTitle">Ready</b><br>
-        <span id="modeText">Tap Start Voice, speak naturally, then tap Stop. Your answer will be sent back to MG RESALE automatically.</span>
-      </div>
-
-      <div id="question" class="question hidden">
-        <small>CRM asks:</small>
-        <strong id="questionText"></strong>
-      </div>
-
-      <div id="transcript" class="transcript">No speech captured yet.</div>
-
-      <div class="buttons">
-        <button id="startBtn" class="start" type="button" onclick="startVoiceSession()">🎙️ Start Voice</button>
-        <button id="stopBtn" class="stop" type="button" onclick="stopListening()" disabled>⏹ Stop</button>
-        <button id="resetBtn" class="reset" type="button" onclick="resetVoice()">↺ Reset</button>
-      </div>
-
-      <div id="status" class="status"></div>
-      <div id="error" class="error hidden"></div>
-
-      <div class="tip">
-        Keep this voice page open. When MG RESALE needs missing information, it will ask the question aloud and this page will listen for your answer.
-      </div>
-    </section>
-  </main>
-
-  
-  
-  <script>const VOICE_API_URL = 'https://script.google.com/macros/s/AKfycbyawltTbaWy291FyF95S0GX6oIlnoac5FzDVxFdDSqUG3VyRoTItG4Mj8zZolxRN_GIjw/exec';</script>
+<body><div class="wrap"><div class="card">
+<h1>MG RESALE — Voice CRM</h1>
+<div class="sub">اضغط Start Voice مرة واحدة واحكي الـ feedback كامل براحتك. بعد حوالي 3 ثواني من آخر كلام، الـ CRM يبدأ المعالجة. الأسئلة تأتي بعد انتهاء الـ feedback بالكامل.</div>
+<button id="start">🎙 Start Voice</button><button id="process">⏹ Process Now</button>
+<div id="status">Ready.</div><div id="transcript"></div>
+</div></div>
 <script>
-    let recognition = null;
-    let isListening = false;
-    let shouldKeepListening = false;
-    let finalText = '';
-    let currentMode = 'call';
-    let questionText = '';
-    let restartTimer = null;
-    let permissionStream = null;
-    let voiceEnabled = false;
-    let silenceTimer = null;
-    const SILENCE_MS = 3000;
-
-    function $(id) { return document.getElementById(id); }
-
-    function showError(message) {
-      $('error').textContent = message || 'Something went wrong.';
-      $('error').classList.remove('hidden');
-    }
-
-    function clearError() {
-      $('error').textContent = '';
-      $('error').classList.add('hidden');
-    }
-
-    function setStatus(message) {
-      $('status').textContent = message || '';
-    }
-
-    function setTranscript(text) {
-      $('transcript').textContent = text || 'No speech captured yet.';
-    }
-
-    function getRecognitionCtor() {
-      return window.SpeechRecognition || window.webkitSpeechRecognition || null;
-    }
-
-    function chooseArabicVoice() {
-      if (!('speechSynthesis' in window)) return null;
-
-      const voices = window.speechSynthesis.getVoices() || [];
-      return voices.find(function(v) {
-        return /^ar(-|_)/i.test(v.lang || '');
-      }) || null;
-    }
-
-    function speakArabic(text, thenListen) {
-      if (!text) return;
-
-      if (!('speechSynthesis' in window)) {
-        setStatus('Speech output is unavailable. Tap Start Voice to answer.');
-        if (thenListen && voiceEnabled) startListening();
-        return;
-      }
-
-      try { window.speechSynthesis.cancel(); } catch (e) {}
-
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'ar-EG';
-      utterance.rate = 0.95;
-      utterance.pitch = 1;
-      utterance.volume = 1;
-
-      const arabicVoice = chooseArabicVoice();
-      if (arabicVoice) utterance.voice = arabicVoice;
-
-      utterance.onstart = function() {
-        shouldKeepListening = false;
-        setStatus('CRM is speaking...');
-      };
-
-      utterance.onend = function() {
-        if (thenListen && voiceEnabled) {
-          setTimeout(function() {
-            startListening();
-          }, 350);
-        } else {
-          setStatus('');
-        }
-      };
-
-      utterance.onerror = function() {
-        if (thenListen && voiceEnabled) {
-          setTimeout(function() {
-            startListening();
-          }, 350);
-        }
-      };
-
-      window.speechSynthesis.speak(utterance);
-    }
-
-    async function requestMicrophonePermission() {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('This browser does not provide microphone access.');
-      }
-
-      if (permissionStream) {
-        permissionStream.getTracks().forEach(function(track) { track.stop(); });
-        permissionStream = null;
-      }
-
-      permissionStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: false
-      });
-
-      permissionStream.getTracks().forEach(function(track) { track.stop(); });
-      permissionStream = null;
-    }
-
-    function buildRecognition() {
-      const Ctor = getRecognitionCtor();
-      if (!Ctor) return null;
-
-      const r = new Ctor();
-      r.continuous = true;
-      r.interimResults = true;
-      r.maxAlternatives = 1;
-      r.lang = 'ar-EG';
-
-      r.onstart = function() {
-        isListening = true;
-        $('startBtn').disabled = true;
-        $('stopBtn').disabled = false;
-        setStatus(
-          currentMode === 'answer'
-            ? 'Listening for your answer...'
-            : 'Listening... Speak naturally, then tap Stop.'
-        );
-      };
-
-      r.onresult = function(event) {
-        let interim = '';
-        let gotFinal = false;
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const result = event.results[i];
-          const text = result[0].transcript || '';
-
-          if (result.isFinal) {
-            finalText += text + ' ';
-            gotFinal = true;
-          } else {
-            interim += text;
-          }
-        }
-
-        const visibleText = (finalText + interim).trim();
-        setTranscript(visibleText);
-
-        /*
-         * No Stop button is needed for normal conversation.
-         * Once the recognition service gives us final words and the user
-         * stays silent for a short period, we automatically finish the
-         * turn, stop recognition, and send the transcript to the CRM.
-         */
-        if (gotFinal && finalText.trim()) {
-          clearTimeout(silenceTimer);
-          silenceTimer = setTimeout(function() {
-            if (!shouldKeepListening || !finalText.trim()) return;
-
-            shouldKeepListening = false;
-            clearTimeout(restartTimer);
-
-            if (recognition) {
-              try { recognition.stop(); } catch (e) {}
-            }
-          }, SILENCE_MS);
-        }
-      };
-
-      r.onerror = function(event) {
-        const error = event && event.error ? event.error : 'unknown';
-
-        if (error === 'not-allowed' || error === 'service-not-allowed') {
-          shouldKeepListening = false;
-          isListening = false;
-          $('startBtn').disabled = false;
-          $('stopBtn').disabled = true;
-          setStatus('');
-          showError(
-            'Microphone permission was denied. Allow microphone access for this GitHub Pages site, then press Start Voice again.'
-          );
-          return;
-        }
-
-        if (error === 'audio-capture') {
-          shouldKeepListening = false;
-          isListening = false;
-          $('startBtn').disabled = false;
-          $('stopBtn').disabled = true;
-          setStatus('');
-          showError(
-            'The browser could not capture the microphone. Check the microphone and try again.'
-          );
-          return;
-        }
-
-        if (shouldKeepListening) {
-          setStatus('Reconnecting voice recognition...');
-        }
-      };
-
-      r.onend = function() {
-        const keep = shouldKeepListening;
-
-        isListening = false;
-        $('startBtn').disabled = !keep;
-        $('stopBtn').disabled = !keep;
-
-        if (keep) {
-          clearTimeout(restartTimer);
-
-          restartTimer = setTimeout(function() {
-            if (!shouldKeepListening) return;
-
-            try {
-              recognition = buildRecognition();
-              recognition.start();
-            } catch (e) {
-              clearTimeout(restartTimer);
-              restartTimer = setTimeout(function() {
-                if (!shouldKeepListening) return;
-
-                try {
-                  recognition = buildRecognition();
-                  recognition.start();
-                } catch (ignored) {}
-              }, 700);
-            }
-          }, 350);
-
-          return;
-        }
-
-        $('startBtn').disabled = false;
-        $('stopBtn').disabled = true;
-        clearTimeout(silenceTimer);
-
-        const text = finalText.trim();
-
-        if (text) {
-          sendTranscript(text);
-        } else {
-          setStatus('No speech detected. Tap Start Voice and speak.');
-        }
-      };
-
-      return r;
-    }
-
-    /*
-     * THIS is the one user action we need on the Voice Page.
-     * It activates the voice session for the browser. After this,
-     * CRM questions can be spoken automatically and the page can
-     * automatically listen again after each question.
-     */
-    async function startVoiceSession() {
-      clearError();
-
-      if (!getRecognitionCtor()) {
-        showError(
-          'Speech Recognition is not available in this browser. Use recent Chrome/Edge on Android or Safari on iPhone.'
-        );
-        return;
-      }
-
-      if (voiceEnabled) {
-        if (questionText) {
-          speakArabic(questionText, true);
-        } else {
-          startListening();
-        }
-        return;
-      }
-
-      try {
-        setStatus('Enabling microphone and voice...');
-
-        await requestMicrophonePermission();
-
-        voiceEnabled = true;
-
-        /*
-         * The click that enabled the session is a real user activation.
-         * Use it immediately for speech output when a CRM question is
-         * already waiting.
-         */
-        if (questionText) {
-          speakArabic(questionText, true);
-        } else {
-          startListening();
-        }
-
-      } catch (error) {
-        showError(
-          'Please allow microphone access for this page. If permission is blocked, open the browser site settings and set Microphone to Allow.'
-        );
-        setStatus('');
-      }
-    }
-
-    function startListening() {
-      clearError();
-
-      if (!voiceEnabled) {
-        startVoiceSession();
-        return;
-      }
-
-      if (!getRecognitionCtor()) {
-        showError('Speech Recognition is not available in this browser.');
-        return;
-      }
-
-      if (isListening) return;
-
-      finalText = '';
-      setTranscript('');
-
-      shouldKeepListening = true;
-
-      try {
-        recognition = buildRecognition();
-        recognition.start();
-      } catch (error) {
-        shouldKeepListening = false;
-        isListening = false;
-        $('startBtn').disabled = false;
-        $('stopBtn').disabled = true;
-        showError('Could not start voice recognition. Press Start Voice again.');
-      }
-    }
-
-    function stopListening() {
-      shouldKeepListening = false;
-      clearTimeout(silenceTimer);
-      clearTimeout(restartTimer);
-
-      if (recognition) {
-        try { recognition.stop(); } catch (e) {}
-      }
-
-      isListening = false;
-      $('startBtn').disabled = false;
-      $('stopBtn').disabled = true;
-    }
-
-    function sendTranscript(text) {
-      const opener = window.opener;
-
-      if (!opener || opener.closed) {
-        setStatus(
-          'Speech captured. Open this page from MG RESALE for automatic delivery.'
-        );
-        return;
-      }
-
-      setStatus('Sending to MG RESALE...');
-
-      try {
-        opener.postMessage(
-          {
-            type: 'VOICE_TRANSCRIPT',
-            text: text
-          },
-          '*'
-        );
-
-        setStatus('Sent to MG RESALE.');
-      } catch (e) {
-        showError('Could not return the transcript to MG RESALE.');
-      }
-    }
-
-    function resetVoice() {
-      shouldKeepListening = false;
-      clearTimeout(silenceTimer);
-      clearTimeout(restartTimer);
-
-      if (recognition) {
-        try { recognition.abort(); } catch (e) {}
-      }
-
-      try { window.speechSynthesis.cancel(); } catch (e) {}
-
-      finalText = '';
-      isListening = false;
-
-      $('startBtn').disabled = false;
-      $('stopBtn').disabled = true;
-
-      setTranscript('');
-      clearError();
-      setStatus('Ready.');
-    }
-
-    function setQuestion(text, mode) {
-      currentMode = mode || 'answer';
-
-      $('modeTitle').dataset.mode = currentMode;
-      $('modeTitle').textContent =
-        currentMode === 'answer' ? 'CRM Question' : 'New Call';
-
-      $('modeText').textContent =
-        currentMode === 'answer'
-          ? 'Listen to the question, then answer naturally.'
-          : 'Tap Start Voice and describe what happened on the call.';
-
-      questionText = text || '';
-
-      if (questionText) {
-        $('questionText').textContent = questionText;
-        $('question').classList.remove('hidden');
-
-        if (voiceEnabled) {
-          speakArabic(questionText, true);
-        } else {
-          setStatus(
-            'Tap Start Voice once to enable the full voice conversation.'
-          );
-        }
-      } else {
-        $('question').classList.add('hidden');
-      }
-    }
-
-    function readyForNewCall() {
-      currentMode = 'call';
-      $('modeTitle').dataset.mode = 'call';
-      $('modeTitle').textContent = 'Ready';
-
-      $('modeText').textContent =
-        'Tap Start Voice once, then speak naturally. When you stop speaking for a short moment, the CRM processes automatically. The Process Now button is only an optional manual fallback.';
-
-      $('question').classList.add('hidden');
-
-      finalText = '';
-      setTranscript('');
-      clearError();
-      setStatus('Ready.');
-
-      $('startBtn').disabled = false;
-      $('stopBtn').disabled = true;
-    }
-
-    function handleCRMMessage(data) {
-      if (!data || typeof data !== 'object') return;
-
-      if (data.type === 'CRM_OPENED') {
-        if (data.mode === 'answer') {
-          currentMode = 'answer';
-          $('modeTitle').dataset.mode = 'answer';
-          setStatus(
-            voiceEnabled
-              ? 'Ready for your answer.'
-              : 'Tap Start Voice once to enable voice.'
-          );
-        } else {
-          readyForNewCall();
-        }
-        return;
-      }
-
-      if (data.type === 'CRM_SPEAK_QUESTION') {
-        setQuestion(
-          data.text || 'من فضلك اديني المعلومة الناقصة.',
-          'answer'
-        );
-        return;
-      }
-
-      if (data.type === 'CRM_SPEAK_SUCCESS') {
-        shouldKeepListening = false;
-        currentMode = 'call';
-        questionText = '';
-        $('question').classList.add('hidden');
-
-        speakArabic(
-          data.text || 'تم الحفظ بنجاح.',
-          false
-        );
-
-        setStatus('Saved. Ready for the next call.');
-        finalText = '';
-        setTranscript('');
-        return;
-      }
-
-      if (data.type === 'CRM_ERROR') {
-        shouldKeepListening = false;
-
-        const text = data.text || 'حصل خطأ.';
-
-        speakArabic(text, false);
-        showError(text);
-        return;
-      }
-
-      if (data.type === 'CRM_RESET') {
-        readyForNewCall();
-      }
-    }
-
-    window.addEventListener('message', function(event) {
-      handleCRMMessage(event.data);
-    });
-
-    window.addEventListener('beforeunload', function() {
-      try {
-        if (window.opener && !window.opener.closed) {
-          window.opener.postMessage(
-            { type: 'VOICE_CLOSED' },
-            '*'
-          );
-        }
-      } catch (e) {}
-    });
-
-    /*
-     * Tell the CRM that Voice Mode is ready.
-     */
-    try {
-      if (window.opener && !window.opener.closed) {
-        window.opener.postMessage(
-          { type: 'VOICE_READY' },
-          '*'
-        );
-      } else {
-        setStatus(
-          'Open this page from MG RESALE Voice Mode.'
-        );
-      }
-    } catch (e) {}
-  </script>
-
-</body>
-</html>
+const VOICE_API_URL='https://script.google.com/macros/s/AKfycbyawltTbaWy291FyF95S0GX6oIlnoac5FzDVxFdDSqUG3VyRoTItG4Mj8zZolxRN_GIjw/exec';
+const SILENCE_MS=3000;
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+const startBtn=document.getElementById('start'),processBtn=document.getElementById('process'),statusEl=document.getElementById('status'),transcriptEl=document.getElementById('transcript');
+let rec=null,keep=false,finalText='',interim='',timer=null,busy=false;
+
+function status(t,c=''){statusEl.textContent=t;statusEl.className=c}
+function render(){transcriptEl.textContent=(finalText+' '+interim).trim()}
+function clearTimer(){if(timer)clearTimeout(timer);timer=null}
+function speak(t){if(!('speechSynthesis'in window)||!t)return;speechSynthesis.cancel();let u=new SpeechSynthesisUtterance(t);u.lang='ar-EG';u.rate=1.05;speechSynthesis.speak(u)}
+function arm(){clearTimer();timer=setTimeout(()=>{if(finalText.trim()){keep=false;try{rec.stop()}catch(e){}}},SILENCE_MS)}
+function setup(){
+ if(!SR){status('Speech Recognition غير مدعوم في المتصفح. استخدم Chrome/Android أو Safari/iPhone.','err');return false}
+ rec=new SR();rec.lang='ar-EG';rec.continuous=true;rec.interimResults=true;rec.maxAlternatives=1;
+ rec.onstart=()=>status('اتكلم براحتك... مش هسألك أي سؤال لحد ما تخلص الـ feedback.');
+ rec.onresult=e=>{interim='';for(let i=e.resultIndex;i<e.results.length;i++){let t=e.results[i][0].transcript||'';if(e.results[i].isFinal)finalText+=t+' ';else interim+=t}render();if(finalText.trim())arm()};
+ rec.onerror=e=>{if(e.error==='not-allowed'||e.error==='service-not-allowed'){keep=false;status('المايك مرفوض. Allow Microphone للموقع ثم جرّب مرة أخرى.','err')}else if(e.error!=='aborted')status('Voice error: '+e.error,'err')};
+ rec.onend=()=>{if(keep&&!busy){setTimeout(()=>{try{rec.start()}catch(e){}},150)}else if(!busy&&finalText.trim())send()};
+ return true
+}
+async function mic(){
+ if(!navigator.mediaDevices?.getUserMedia)return true;
+ try{let s=await navigator.mediaDevices.getUserMedia({audio:true});s.getTracks().forEach(t=>t.stop());return true}
+ catch(e){status('Allow Microphone للموقع من إعدادات المتصفح ثم اضغط Start Voice مرة أخرى.','err');return false}
+}
+async function start(){
+ if(busy)return;if(!rec&&!setup())return;if(!(await mic()))return;
+ finalText='';interim='';render();clearTimer();keep=true;processBtn.style.display='block';try{rec.start()}catch(e){}
+}
+function manual(){if(!finalText.trim())return;keep=false;clearTimer();try{rec.stop()}catch(e){}}
+async function ask(q){
+ status(q,'warn');speak(q);
+ await new Promise(r=>{if(!('speechSynthesis'in window))return r();let x=setInterval(()=>{if(!speechSynthesis.speaking){clearInterval(x);r()}},80)});
+ finalText='';interim='';render();clearTimer();keep=true;try{rec.start()}catch(e){}
+}
+async function send(){
+ if(busy||!finalText.trim())return;busy=true;processBtn.disabled=true;startBtn.disabled=true;status('براجع الـ feedback كامل وبحلله...');
+ try{
+   let r=await fetch(VOICE_API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({transcript:finalText.trim()})});
+   let d=await r.json();await handle(d);
+ }catch(e){status('لم أستطع الاتصال بالـ CRM. راجع آخر Deployment للـ Apps Script وتأكد أن الوصول Anyone.','err')}
+ finally{busy=false;processBtn.disabled=false;startBtn.disabled=false}
+}
+async function handle(d){
+ if(!d)return;
+ if(d.success){keep=false;status(d.message||'Saved successfully.','ok');speak(d.message||'تم الحفظ بنجاح.');return}
+ if(d.type==='REQUIRED_NEW_LEAD_DATA'||d.type==='NEW_CLIENT_MISSING_DATA'||d.type==='SOURCE_REQUIRED'||d.type==='CLIENT_NOT_FOUND'||d.type==='MULTIPLE_CLIENTS'){
+   await ask(d.question||d.message);return
+ }
+ if(d.type==='LEAD_FIELD_CHANGE_CONFIRMATION'){await ask(d.message||'هل تريد تعديل بيانات العميل؟ قل عدل أو ضيف أو سيبها زي ما هي.');return}
+ keep=false;status(d.message||'حدث خطأ.','err');speak(d.message||'حدث خطأ أثناء المعالجة.')
+}
+startBtn.onclick=start;processBtn.onclick=manual;
+</script></body></html>
