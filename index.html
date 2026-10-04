@@ -130,17 +130,27 @@ function clearInactivityTimer_(){
 function armInactivityFallback_(){
   clearTimeout(inactivityTimer);
 
-  if(!shouldKeepListening || processing || !currentVoiceText_()) return;
+  if(!shouldKeepListening || processing || !currentVoiceText_() || !lastSpeechAt){
+    return;
+  }
+
+  const elapsed=Date.now()-lastSpeechAt;
+  const wait=Math.max(250,SILENCE_MS-elapsed);
 
   inactivityTimer=setTimeout(()=>{
     if(!shouldKeepListening || processing) return;
     if(!currentVoiceText_()) return;
 
-    // If ANY new recognition result arrived, the timer is re-armed from onresult.
-    // This is deliberately independent of speechActive because Chromium can
-    // occasionally leave that flag stuck at true.
+    const quietFor=Date.now()-lastSpeechAt;
+
+    // Any new recognition result updates lastSpeechAt and re-arms this timer.
+    if(quietFor<SILENCE_MS){
+      armInactivityFallback_();
+      return;
+    }
+
     finishTurn_('fallback-inactivity');
-  },SILENCE_MS);
+  },wait);
 }
 
 function clearTurnTimers_(){
@@ -214,7 +224,10 @@ function createRecognition_(){
     heardSpeech=true;
     lastSpeechAt=Date.now();
     clearTimeout(silenceTimer);
-    clearInactivityTimer_();
+    // DO NOT cancel the inactivity fallback here.
+    // New recognition results re-arm it; this guarantees processing even if
+    // Chromium fails to emit speechend/soundend.
+    armInactivityFallback_();
     status(currentMode==='answer' ? 'تمام، رد براحتك...' : 'تمام، كمّل براحتك...');
   };
 
@@ -224,7 +237,7 @@ function createRecognition_(){
     heardSpeech=true;
     lastSpeechAt=Date.now();
     clearTimeout(silenceTimer);
-    clearInactivityTimer_();
+    armInactivityFallback_();
   };
 
   r.onresult=e=>{
@@ -249,8 +262,8 @@ function createRecognition_(){
     clearTimeout(silenceTimer);
     render();
 
-    // Fallback for Chromium builds that do not reliably fire speechend/soundend.
-    // Any new result resets the 3-second deadline.
+    // Every recognition result is the heartbeat. Three seconds after the LAST
+    // result, the turn is finalized if no newer result arrives.
     armInactivityFallback_();
 
     if(newestFinal && currentMode==='call' && !phoneMode){
@@ -461,6 +474,8 @@ function finishTurn_(reason){
       phoneAttempts++;
       turnFinal='';
       turnInterim='';
+      lastSpeechAt=0;
+      clearTurnTimers_();
       $('questionText').textContent='الرقم مش واضح أو ناقص. قول رقم الموبايل رقم رقم، من فضلك.';
       render();
       speak('الرقم مش واضح أو ناقص. قول رقم الموبايل رقم رقم، من فضلك.',true);
