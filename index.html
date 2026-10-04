@@ -46,4 +46,5 @@ async function startSession(){clearError();if(!ctor()){error('Speech Recognition
 function reset(){shouldKeepListening=false;clearTimeout(silenceTimer);clearTimeout(restartTimer);if(recognition)try{recognition.abort()}catch(e){}try{speechSynthesis.cancel()}catch(e){}recognition=null;isListening=false;voiceEnabled=false;finalText='';conversation=[];questionText='';$('question').classList.add('hidden');$('startBtn').disabled=false;$('stopBtn').disabled=true;$('modeTitle').textContent='Ready';$('modeText').textContent='Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically.';$('transcript').textContent='No speech captured yet.';status('Ready.');clearError()}
 $('startBtn').onclick=startSession;$('stopBtn').onclick=stopNow;$('resetBtn').onclick=reset;
 </script>
+  <!-- MG RESALE SAME PAGE VOICE CRM -->
 </body></html>
