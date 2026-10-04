@@ -45,6 +45,17 @@ let speechActive=false;
 let heardSpeech=false;
 let lastSpeechAt=0;
 
+// Real microphone VAD controls the end-of-turn boundary.
+let vadStream=null;
+let vadContext=null;
+let vadAnalyser=null;
+let vadFrame=null;
+let vadRunning=false;
+let vadThreshold=0.018;
+let vadNoiseFloor=0.006;
+let lastAudibleAt=0;
+let vadSuppressed=false;
+
 let silenceTimer=null;
 let inactivityTimer=null;
 let restartTimer=null;
@@ -82,6 +93,101 @@ function arabicVoice(){
   return (speechSynthesis.getVoices()||[]).find(v=>/^ar(-|_)/i.test(v.lang||''))||null;
 }
 
+
+function stopVAD_(){
+  vadRunning=false;
+  if(vadFrame) cancelAnimationFrame(vadFrame);
+  vadFrame=null;
+
+  if(vadStream){
+    try{ vadStream.getTracks().forEach(function(t){t.stop();}); }catch(e){}
+  }
+  vadStream=null;
+
+  if(vadContext){
+    try{ vadContext.close(); }catch(e){}
+  }
+  vadContext=null;
+  vadAnalyser=null;
+  lastAudibleAt=0;
+}
+
+async function startVAD_(){
+  if(vadRunning) return true;
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return false;
+
+  try{
+    vadStream=await navigator.mediaDevices.getUserMedia({
+      audio:{
+        channelCount:1,
+        echoCancellation:true,
+        noiseSuppression:true,
+        autoGainControl:true
+      }
+    });
+
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC) return false;
+
+    vadContext=new AC();
+    if(vadContext.state==='suspended'){
+      try{ await vadContext.resume(); }catch(e){}
+    }
+
+    const source=vadContext.createMediaStreamSource(vadStream);
+    vadAnalyser=vadContext.createAnalyser();
+    vadAnalyser.fftSize=2048;
+    vadAnalyser.smoothingTimeConstant=0.12;
+    source.connect(vadAnalyser);
+
+    vadRunning=true;
+    vadNoiseFloor=0.006;
+    vadThreshold=0.018;
+    lastAudibleAt=Date.now();
+
+    const data=new Float32Array(vadAnalyser.fftSize);
+
+    const loop=()=>{
+      if(!vadRunning || !vadAnalyser) return;
+
+      vadAnalyser.getFloatTimeDomainData(data);
+      let sum=0;
+      for(let i=0;i<data.length;i++) sum += data[i]*data[i];
+      const rms=Math.sqrt(sum/data.length);
+
+      if(rms < vadThreshold*0.80){
+        vadNoiseFloor=vadNoiseFloor*0.97 + rms*0.03;
+        vadThreshold=Math.max(0.012, vadNoiseFloor*3.0);
+      }
+
+      const audible=!vadSuppressed && rms>=vadThreshold;
+
+      if(audible){
+        heardSpeech=true;
+        lastAudibleAt=Date.now();
+        lastSpeechAt=lastAudibleAt;
+        clearTimeout(silenceTimer);
+        clearTimeout(inactivityTimer);
+      }
+
+      if(shouldKeepListening && !processing && !vadSuppressed && currentVoiceText_() && lastAudibleAt){
+        if(Date.now()-lastAudibleAt >= SILENCE_MS){
+          finishTurn_('real-microphone-silence');
+          return;
+        }
+      }
+
+      vadFrame=requestAnimationFrame(loop);
+    };
+
+    vadFrame=requestAnimationFrame(loop);
+    return true;
+  }catch(e){
+    stopVAD_();
+    return false;
+  }
+}
+
 function speak(text,listenAfter){
   if(!text) return;
 
@@ -103,16 +209,23 @@ function speak(text,listenAfter){
 
   u.onstart=()=>{
     shouldKeepListening=false;
+    vadSuppressed=true;
+    clearTimeout(silenceTimer);
+    clearTimeout(inactivityTimer);
     status('CRM is speaking...');
   };
 
   u.onend=()=>{
+    vadSuppressed=false;
+    lastAudibleAt=Date.now();
     if(listenAfter && voiceEnabled){
       setTimeout(()=>startListening_(true),250);
     }
   };
 
   u.onerror=()=>{
+    vadSuppressed=false;
+    lastAudibleAt=Date.now();
     if(listenAfter && voiceEnabled){
       setTimeout(()=>startListening_(true),250);
     }
@@ -127,21 +240,7 @@ function clearInactivityTimer_(){
   inactivityTimer=null;
 }
 
-function armInactivityFallback_(){
-  clearTimeout(inactivityTimer);
-
-  if(!shouldKeepListening || processing || !currentVoiceText_()) return;
-
-  inactivityTimer=setTimeout(()=>{
-    if(!shouldKeepListening || processing) return;
-    if(!currentVoiceText_()) return;
-
-    // If ANY new recognition result arrived, the timer is re-armed from onresult.
-    // This is deliberately independent of speechActive because Chromium can
-    // occasionally leave that flag stuck at true.
-    finishTurn_('fallback-inactivity');
-  },SILENCE_MS);
-}
+function armInactivityFallback_(){ }
 
 function clearTurnTimers_(){
   clearTimeout(silenceTimer);
@@ -151,26 +250,7 @@ function clearTurnTimers_(){
   restartTimer=null;
 }
 
-function scheduleRealSilence_(){
-  clearTimeout(silenceTimer);
-
-  if(!shouldKeepListening || processing) return;
-  if(!currentVoiceText_() || speechActive) return;
-
-  silenceTimer=setTimeout(()=>{
-    if(!shouldKeepListening || processing) return;
-    if(speechActive) return;
-    if(!currentVoiceText_()) return;
-
-    // Full 3 seconds with no speech/sound activity.
-    if(lastSpeechAt && Date.now()-lastSpeechAt < SILENCE_MS){
-      scheduleRealSilence_();
-      return;
-    }
-
-    finishTurn_('auto-silence');
-  },SILENCE_MS);
-}
+function scheduleRealSilence_(){ }
 
 function createRecognition_(){
   const C=ctor();
@@ -200,32 +280,11 @@ function createRecognition_(){
       : 'Listening... Speak naturally.');
   };
 
-  r.onaudiostart=()=>{
-    if(!shouldKeepListening) return;
-    speechActive=true;
-    heardSpeech=true;
-    lastSpeechAt=Date.now();
-    clearTimeout(silenceTimer);
-  };
+  r.onaudiostart=()=>{};
 
-  r.onsoundstart=()=>{
-    if(!shouldKeepListening) return;
-    speechActive=true;
-    heardSpeech=true;
-    lastSpeechAt=Date.now();
-    clearTimeout(silenceTimer);
-    clearInactivityTimer_();
-    status(currentMode==='answer' ? 'تمام، رد براحتك...' : 'تمام، كمّل براحتك...');
-  };
+  r.onsoundstart=()=>{ if(shouldKeepListening) status(currentMode==='answer' ? 'تمام، رد براحتك...' : 'تمام، كمّل براحتك...'); };
 
-  r.onspeechstart=()=>{
-    if(!shouldKeepListening) return;
-    speechActive=true;
-    heardSpeech=true;
-    lastSpeechAt=Date.now();
-    clearTimeout(silenceTimer);
-    clearInactivityTimer_();
-  };
+  r.onspeechstart=()=>{};
 
   r.onresult=e=>{
     let newestFinal='';
@@ -256,36 +315,16 @@ function createRecognition_(){
 
     // Fallback for Chromium builds that do not reliably fire speechend/soundend.
     // Any new result resets the 3-second deadline.
-    armInactivityFallback_();
-
     if(newestFinal && currentMode==='call' && !phoneMode){
       queueLiveCorrection_(newestFinal);
     }
   };
 
-  r.onspeechend=()=>{
-    speechActive=false;
-    lastSpeechAt=Date.now();
-    if(shouldKeepListening && currentVoiceText_()){
-      scheduleRealSilence_();
-      armInactivityFallback_();
-    }
-  };
+  r.onspeechend=()=>{ speechActive=false; };
 
-  r.onsoundend=()=>{
-    speechActive=false;
-    lastSpeechAt=Date.now();
-    if(shouldKeepListening && currentVoiceText_()){
-      scheduleRealSilence_();
-      armInactivityFallback_();
-    }
-  };
+  r.onsoundend=()=>{ speechActive=false; };
 
-  r.onaudioend=()=>{
-    if(!speechActive && shouldKeepListening && currentVoiceText_()){
-      scheduleRealSilence_();
-    }
-  };
+  r.onaudioend=()=>{};
 
   r.onerror=e=>{
     const err=String(e?.error||'unknown');
@@ -317,15 +356,9 @@ function createRecognition_(){
   r.onend=()=>{
     isListening=false;
 
-    if(phoneMode && shouldKeepListening && currentVoiceText_()){
-      speechActive=false;
-      scheduleRealSilence_();
-      armInactivityFallback_();
-      return;
-    }
-
     if(shouldKeepListening && !processing){
-      if(currentVoiceText_()) armInactivityFallback_();
+      // SpeechRecognition may restart while the microphone VAD keeps listening.
+      // Restarting recognition NEVER finalizes the user's turn.
       clearTimeout(restartTimer);
 
       restartTimer=setTimeout(()=>{
@@ -375,6 +408,7 @@ function startListening_(newTurn){
     speechActive=false;
     heardSpeech=false;
     lastSpeechAt=0;
+    lastAudibleAt=Date.now();
     phoneAttempts=0;
 
     if(currentMode==='call'){
@@ -394,6 +428,10 @@ function startListening_(newTurn){
   status(currentMode==='answer'
     ? 'Listening for your answer...'
     : 'Listening... Speak naturally.');
+
+  if(!vadRunning){
+    startVAD_();
+  }
 
   try{
     recognition=createRecognition_();
@@ -423,9 +461,9 @@ function startSession(){
 
   $('modeTitle').textContent='Listening';
   $('modeText').textContent='سامعك. اتكلم براحتك، وأنا هجمع القصة كلها قبل ما أحفظها.';
-  status('Starting Speech Recognition...');
+  status('Starting microphone and Speech Recognition...');
 
-  startListening_(true);
+  startVAD_().finally(()=>startListening_(true));
 }
 
 function finishTurn_(reason){
@@ -809,6 +847,7 @@ function reset(){
 
   try{if(recognition) recognition.abort();}catch(e){}
   try{speechSynthesis.cancel();}catch(e){}
+  stopVAD_();
 
   recognition=null;
   voiceEnabled=false;
