@@ -28,6 +28,7 @@
 <script>
 const API='https://script.google.com/macros/s/AKfycbyawltTbaWy291FyF95S0GX6oIlnoac5FzDVxFdDSqUG3VyRoTItG4Mj8zZolxRN_GIjw/exec';
 const SILENCE_MS=3000;
+const PHONE_SILENCE_MS=12000;
 const CHUNK_SIZE=900;
 
 let recognition=null;
@@ -75,6 +76,12 @@ function clearError(){ $('error').textContent=''; $('error').classList.add('hidd
 
 function currentVoiceText_(){
   return (turnFinal+' '+turnInterim).replace(/\s+/g,' ').trim();
+}
+
+function activeSilenceMs_(){
+  // Phone numbers are spoken slowly/digit-by-digit, so they get their own
+  // generous silence window. Normal feedback remains at 3 seconds.
+  return phoneMode ? PHONE_SILENCE_MS : SILENCE_MS;
 }
 
 function render(){
@@ -171,7 +178,7 @@ async function startVAD_(){
       }
 
       if(shouldKeepListening && !processing && !vadSuppressed && currentVoiceText_() && lastAudibleAt){
-        if(Date.now()-lastAudibleAt >= SILENCE_MS){
+        if(Date.now()-lastAudibleAt >= activeSilenceMs_()){
           finishTurn_('real-microphone-silence');
           return;
         }
@@ -188,11 +195,61 @@ async function startVAD_(){
   }
 }
 
-function speak(text,listenAfter){
+async function speak(text,listenAfter){
   if(!text) return;
 
+  shouldKeepListening=false;
+  vadSuppressed=true;
+  clearTimeout(silenceTimer);
+  clearInactivityTimer_();
+
+  // Primary TTS: Gemini 3.8 Flash TTS, tuned for Egyptian Arabic.
+  try{
+    const data=await jsonpRequest({
+      api:'voiceSpeak',
+      text:String(text).trim()
+    },20000);
+
+    if(data && data.success && data.audioBase64){
+      const audio=new Audio(
+        'data:'+(data.mimeType||'audio/wav')+';base64,'+data.audioBase64
+      );
+
+      status('CRM is speaking...');
+
+      audio.onended=()=>{
+        vadSuppressed=false;
+        lastAudibleAt=Date.now();
+
+        if(listenAfter && voiceEnabled){
+          setTimeout(()=>startListening_(true),250);
+        }
+      };
+
+      audio.onerror=()=>{
+        vadSuppressed=false;
+        fallbackSpeech_(text,listenAfter);
+      };
+
+      try{
+        await audio.play();
+        return;
+      }catch(playError){
+        // Browser autoplay/media policy blocked the generated audio.
+        // Fall back to browser Arabic speech without breaking the workflow.
+      }
+    }
+  }catch(e){
+    // Network/TTS failure must never stop the CRM flow.
+  }
+
+  fallbackSpeech_(text,listenAfter);
+}
+
+function fallbackSpeech_(text,listenAfter){
   if(!('speechSynthesis' in window)){
-    if(listenAfter) setTimeout(()=>startListening_(true),150);
+    vadSuppressed=false;
+    if(listenAfter && voiceEnabled) setTimeout(()=>startListening_(true),150);
     return;
   }
 
@@ -200,24 +257,20 @@ function speak(text,listenAfter){
 
   const u=new SpeechSynthesisUtterance(text);
   u.lang='ar-EG';
-  u.rate=.95;
+  u.rate=.94;
   u.pitch=1;
   u.volume=1;
 
-  const v=arabicVoice();
-  if(v) u.voice=v;
+  const voices=speechSynthesis.getVoices()||[];
+  const ar=voices.find(v=>/^ar[-_]/i.test(v.lang||''));
+  if(ar) u.voice=ar;
 
-  u.onstart=()=>{
-    shouldKeepListening=false;
-    vadSuppressed=true;
-    clearTimeout(silenceTimer);
-    clearTimeout(inactivityTimer);
-    status('CRM is speaking...');
-  };
+  u.onstart=()=>status('CRM is speaking...');
 
   u.onend=()=>{
     vadSuppressed=false;
     lastAudibleAt=Date.now();
+
     if(listenAfter && voiceEnabled){
       setTimeout(()=>startListening_(true),250);
     }
@@ -225,7 +278,6 @@ function speak(text,listenAfter){
 
   u.onerror=()=>{
     vadSuppressed=false;
-    lastAudibleAt=Date.now();
     if(listenAfter && voiceEnabled){
       setTimeout(()=>startListening_(true),250);
     }
@@ -282,7 +334,12 @@ function createRecognition_(){
 
   r.onaudiostart=()=>{};
 
-  r.onsoundstart=()=>{ if(shouldKeepListening) status(currentMode==='answer' ? 'تمام، رد براحتك...' : 'تمام، كمّل براحتك...'); };
+  r.onsoundstart=()=>{
+    if(!shouldKeepListening) return;
+    status(phoneMode
+      ? 'سامع الرقم. خد وقتك لحد ما تخلص كل الأرقام...'
+      : 'تمام، كمّل براحتك...');
+  };
 
   r.onspeechstart=()=>{};
 
@@ -308,7 +365,9 @@ function createRecognition_(){
     clearTimeout(silenceTimer);
 
     if(currentMode==='call' && !phoneMode){
-      correctedLiveText=localCorrectLive_(currentVoiceText_());
+      const raw=currentVoiceText_();
+      const corrected=localCorrectLive_(raw);
+      correctedLiveText=(corrected!==raw) ? corrected : '';
     }
 
     render();
@@ -488,8 +547,8 @@ function finishTurn_(reason){
   $('startBtn').disabled=true;
   $('stopBtn').disabled=true;
   status(reason==='manual'
-    ? 'خلصت التسجيل. بجهّز المكالمة للحفظ...'
-    : 'خلصنا الكلام. بجهّز المكالمة للحفظ...');
+    ? (phoneMode ? 'خلصت الرقم. بتأكد منه...' : 'خلصت التسجيل. بجهّز المكالمة للحفظ...')
+    : (phoneMode ? 'خلصت الرقم. بتأكد منه...' : 'خلصنا الكلام. بجهّز المكالمة للحفظ...'));
 
   if(!t){
     processing=false;
@@ -507,9 +566,12 @@ function finishTurn_(reason){
       phoneAttempts++;
       turnFinal='';
       turnInterim='';
-      $('questionText').textContent='الرقم مش واضح أو ناقص. قول رقم الموبايل رقم رقم، من فضلك.';
+      lastSpeechAt=0;
+      lastAudibleAt=Date.now();
+      phoneMode=true;
+      $('questionText').textContent='الرقم مش واضح أو ناقص. قول رقم الموبايل رقم رقم. خد وقتك، وأنا مستنيك تخلص.';
       render();
-      speak('الرقم مش واضح أو ناقص. قول رقم الموبايل رقم رقم، من فضلك.',true);
+      speak('الرقم مش واضح أو ناقص. قول رقم الموبايل رقم رقم. خد وقتك، وأنا مستنيك تخلص.',true);
       return;
     }
 
@@ -727,18 +789,41 @@ function localCorrectLive_(text){
 
 function queueLiveCorrection_(segment){
   if(currentMode!=='call' || phoneMode) return;
-  correctedLiveText=localCorrectLive_(currentVoiceText_());
+
+  const raw=currentVoiceText_();
+  const corrected=localCorrectLive_(raw);
+
+  // Only show a correction preview when we actually changed something.
+  correctedLiveText=(corrected!==raw) ? corrected : '';
   render();
 }
 
 function arabicQuestion(data){
+  // For new leads, never let Gemini invent the wording of the missing-field prompt.
+  // Use a fixed natural Egyptian phrase based on the exact missing field.
+  if(data && data.missingFields && data.missingFields.length){
+    const field=String(data.missingFields[0]).trim();
+
+    const map={
+      'Client Name':'تمام، قولّي اسم العميل.',
+      'Client Number':'تمام، قولّي رقم الموبايل رقم رقم، وخد وقتك وأنا مستنيك تخلص.',
+      'Source':'تمام، الليد ده جالك منين؟ Element، Direct، Adel، FB، Cold Call، ولا Refell؟',
+      'Unit Type':'تمام، العميل مهتم بإيه؟ فيلا، Twin House، Town House، شقة، ولا نوع تاني؟',
+      'Location':'حلو، العميل بيدور في أنهي مشروع أو منطقة؟',
+      'Delivery Date':'تمام، وعايز الاستلام إمتى؟',
+      'Budget':'حلو، والميزانية اللي العميل حاططها في حدود كام؟'
+    };
+
+    if(map[field]) return map[field];
+  }
+
   if(data.question) return data.question;
-  if(data.type==='PHONE_REQUIRED') return 'قول لي رقم الموبايل تاني، رقم رقم، من فضلك.';
-  if(data.type==='PHONE_CONFIRMATION_REQUIRED') return data.question||'أنا فهمت رقم الموبايل. الرقم ده صح؟ قول أيوه أو لأ.';
-  if(data.type==='NEW_CLIENT_MISSING_DATA') return 'تمام، ناقصني معلومة عشان أضيف الليد. هسألك عليها واحدة واحدة.';
+  if(data.type==='PHONE_REQUIRED') return 'تمام، قولّي رقم الموبايل رقم رقم، وخد وقتك وأنا مستنيك تخلص.';
+  if(data.type==='PHONE_CONFIRMATION_REQUIRED') return data.question||'أنا فهمت رقم الموبايل. الرقم ده صح؟';
+  if(data.type==='NEW_CLIENT_MISSING_DATA') return 'تمام، ناقصني شوية بيانات بسيطة. هسألك عليهم واحدة واحدة.';
   if(data.type==='SOURCE_REQUIRED') return 'تمام، الليد ده جالك منين؟ Element، Direct، Adel، FB، Cold Call، ولا Refell؟';
   if(data.type==='CLIENT_NOT_FOUND') return 'مش قادر أحدد الليد. قولّي اسم العميل أو آخر أربع أرقام من الموبايل.';
-  if(data.type==='MULTIPLE_CLIENTS') return data.message||'فيه أكتر من تطابق. قولّي اسم العميل أو آخر أربع أرقام من الموبايل.';
+  if(data.type==='MULTIPLE_CLIENTS') return data.message||'لقيت أكتر من تطابق. قولّي اسم العميل أو آخر أربع أرقام من الموبايل.';
   return null;
 }
 
@@ -788,7 +873,9 @@ function handleResult(data){
 }
 
 function speakQuestionIntroThen_(questionToSpeak){
-  const intro='بص يا عزيزي، فيه شوية حاجات ناقصة محتاج ردك عليهم عشان أضيف الليد بشكل كامل. هسألك عليهم واحدة واحدة. لو عندك المعلومات أهلاً وسهلاً ونكمّل، ولو مش متاحة دلوقتي ارجعلي بيها بعدين ونكمّل.';
+  const intro=
+    'بص يا عزيزي، ناقصني شوية بيانات بسيطة عشان أكمّل إضافة الليد بشكل كامل. ' +
+    'هسألك عليهم واحدة واحدة، وإنت رد عليا براحتك، وأنا هكمّل لك الباقي.';
 
   if(!newLeadIntroPending || questionIntroPlayed){
     speak(questionToSpeak,true);
@@ -803,7 +890,7 @@ function speakQuestionIntroThen_(questionToSpeak){
   setTimeout(()=>{
     if(!voiceEnabled || window.__mgRequestBusy) return;
     speak(questionToSpeak,true);
-  },Math.max(2600,intro.length*38));
+  },3200);
 }
 
 function ask(text){
@@ -817,7 +904,7 @@ function ask(text){
   }
 
   $('questionText').textContent=phoneMode
-    ? 'قول رقم الموبايل رقم رقم، من غير كلام تاني.'
+    ? 'قول رقم الموبايل رقم رقم. خد وقتك، وأنا مستنيك تخلص.'
     : questionText;
 
   $('question').classList.remove('hidden');
@@ -826,13 +913,13 @@ function ask(text){
 
   $('modeTitle').textContent='CRM Question';
   $('modeText').textContent=phoneMode
-    ? 'هسمع الرقم رقم رقم، ولو فيه حاجة مش واضحة هقولك تعيده.'
+    ? 'هسمع الرقم رقم رقم. خد وقتك، ومش هقاطعك. وبعد ما تخلص هتأكد إن الرقم كامل.'
     : 'تمام، اسمع السؤال ورد عليّ بطريقتك.';
 
   render();
 
   const spoken=phoneMode
-    ? 'قول رقم الموبايل رقم رقم، من فضلك.'
+    ? 'قول رقم الموبايل رقم رقم، خد وقتك، وأنا مستنيك تخلص.'
     : questionText;
 
   speakQuestionIntroThen_(spoken);
