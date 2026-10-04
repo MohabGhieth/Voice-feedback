@@ -84,8 +84,22 @@ function activeSilenceMs_(){
   return phoneMode ? PHONE_SILENCE_MS : SILENCE_MS;
 }
 
+function maskConversationForDisplay_(line){
+  let s=String(line||'');
+
+  // Phone numbers are internal CRM identity data. Never display them inside
+  // the visible conversation log.
+  if(/^ANSWER\s*:\s*PHONE\b/i.test(s)){
+    return 'ANSWER: PHONE [captured privately]';
+  }
+
+  // Also mask full Egyptian mobile numbers wherever a CRM answer happens to echo one.
+  s=s.replace(/(?:\+?20[\s().-]*)?01(?:[\s().-]*\d){9}/g,'[phone hidden]');
+  return s;
+}
+
 function render(){
-  const rows=conversation.slice();
+  const rows=conversation.map(maskConversationForDisplay_);
   const live=currentVoiceText_();
   if(live) rows.push('VOICE (LIVE): '+live);
   $('transcript').textContent=rows.length ? rows.join('\n\n') : 'No speech captured yet.';
@@ -365,9 +379,7 @@ function createRecognition_(){
     clearTimeout(silenceTimer);
 
     if(currentMode==='call' && !phoneMode){
-      const raw=currentVoiceText_();
-      const corrected=localCorrectLive_(raw);
-      correctedLiveText=(corrected!==raw) ? corrected : '';
+      correctedLiveText=localCorrectLive_(currentVoiceText_());
     }
 
     render();
@@ -748,12 +760,55 @@ function validEgyptianMobileDigits_(d){
   return /^01[0125][0-9]{8}$/.test(d);
 }
 
+
+function localClarificationAnswer_(question, raw){
+  const q=String(question||'').toLowerCase().trim();
+  const a=String(raw||'').trim();
+
+  if(!a) return '';
+
+  if(/مصدر الليد|مصدر العميل|source|lead source/.test(q)){
+    const s=a.toLowerCase();
+    if(/\belement\b|ايليمنت|اليمنت|المنت/.test(s)) return 'Element';
+    if(/\bdirect\b|مباشر/.test(s)) return 'Direct';
+    if(/\badel\b|عادل/.test(s)) return 'Adel';
+    if(/\bfacebook\b|\bfb\b|فيس\s*بوك|فيس/.test(s)) return 'FB';
+    if(/\bcold\s*call\b|coldcall|كولد\s*كول|كولدكال/.test(s)) return 'Cold Call';
+    if(/\brefell\b|\breferral\b|ريفيل|ريفيرال/.test(s)) return 'Refell';
+  }
+
+  if(/نوع الوحدة|الوحدة|unit type|property type/.test(q)){
+    const s=a.toLowerCase();
+    if(/stand\s*alone|standalone|ستاند|استاندر|ستاندالون/.test(s)) return 'Standalone';
+    if(/twin\s*house|توين|توأم/.test(s)) return 'Twin House';
+    if(/town\s*house|تاون/.test(s)) return 'Town House';
+    if(/villa|فيلا/.test(s)) return 'Villa';
+    if(/apartment|شقة|شقه/.test(s)) return 'Apartment';
+  }
+
+  if(/المكان|المشروع|location|project|compound|area/.test(q)){
+    if(/جروفا|جرووفا|جروبا|برووفا|groova/i.test(a)) return 'Groova';
+    if(/ميفيدا|ميڤيدا|mivida/i.test(a)) return 'Mivida';
+    if(/اب\s*تاون|أب\s*تاون|up\s*town|up\s*to\s*one|uptown/i.test(a)) return 'Uptown Cairo';
+    if(/one\s*ninety|ون\s*ننتي|وان\s*ناينتي/i.test(a)) return 'One Ninety';
+    if(/ماونتن\s*فيو|ماونتين\s*فيو|mountain\s*view/i.test(a)) return 'Mountain View';
+  }
+
+  return a;
+}
+
 async function correctAnswerContext_(raw){
   const q=String(questionText||'').trim();
   const a=String(raw||'').trim();
 
   if(!q || !a || phoneMode) return a;
 
+  // Deterministic first. This is critical for one-word answers like "FB"
+  // and "Element": they must never be lost or changed by a free-form model.
+  const local=localClarificationAnswer_(q,a);
+  if(local!==a) return local;
+
+  // For narrative answers, AI can still clean the wording using question context.
   try{
     const data=await jsonpRequest({
       api:'voiceCorrectAnswer',
@@ -789,12 +844,7 @@ function localCorrectLive_(text){
 
 function queueLiveCorrection_(segment){
   if(currentMode!=='call' || phoneMode) return;
-
-  const raw=currentVoiceText_();
-  const corrected=localCorrectLive_(raw);
-
-  // Only show a correction preview when we actually changed something.
-  correctedLiveText=(corrected!==raw) ? corrected : '';
+  correctedLiveText=localCorrectLive_(currentVoiceText_());
   render();
 }
 
@@ -863,6 +913,7 @@ function handleResult(data){
 
   const q=arabicQuestion(data);
   if(q){
+    status('تمام، نكمّل بالمعلومة الناقصة...');
     ask(q);
     return;
   }
@@ -913,7 +964,7 @@ function ask(text){
 
   $('modeTitle').textContent='CRM Question';
   $('modeText').textContent=phoneMode
-    ? 'هسمع الرقم رقم رقم. خد وقتك، ومش هقاطعك. وبعد ما تخلص هتأكد إن الرقم كامل.'
+    ? 'هسمع الرقم رقم رقم. خد وقتك، ومش هقاطعك. ولو الرقم مش واضح هطلبه تاني.'
     : 'تمام، اسمع السؤال ورد عليّ بطريقتك.';
 
   render();
