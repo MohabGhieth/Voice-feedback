@@ -13,7 +13,7 @@
 <main class="app">
 <div class="brand"><h1>MG RESALE</h1><p>Voice Mode — Final</p></div>
 <section class="card">
-<div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically.</span></div>
+<div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. After 3 seconds of real silence, the CRM processes your turn automatically.</span></div>
 <div id="question" class="question hidden"><small>CRM asks:</small><strong id="questionText"></strong></div>
 <div id="transcript" class="transcript">No speech captured yet.</div>
 <div class="buttons">
@@ -159,6 +159,10 @@ function buildRecognition(){
     armSessionRotation_();
     $('startBtn').disabled=true;
     $('stopBtn').disabled=false;
+    $('modeTitle').textContent=currentMode==='answer' ? 'Listening for Answer' : 'Listening';
+    $('modeText').textContent=currentMode==='answer'
+      ? 'تمام، سامعك. خُد وقتك ورد على السؤال.'
+      : 'سامعك. اتكلم براحتك، وأنا هجمع القصة كلها قبل ما أحفظها.';
     status(currentMode==='answer'
       ? 'Listening for your answer...'
       : 'Listening... Speak naturally.');
@@ -176,7 +180,8 @@ function buildRecognition(){
     heardSpeech=true;
     lastSpeechActivityAt=Date.now();
     clearTimeout(silenceTimer);
-    status('I hear you...');
+    $('modeTitle').textContent=currentMode==='answer' ? 'Listening for Answer' : 'Listening';
+    status('تمام، أنا سامعك...');
   };
 
   r.onspeechstart=()=>{
@@ -184,7 +189,8 @@ function buildRecognition(){
     heardSpeech=true;
     lastSpeechActivityAt=Date.now();
     clearTimeout(silenceTimer);
-    status('Listening to your speech...');
+    $('modeTitle').textContent=currentMode==='answer' ? 'Listening for Answer' : 'Listening';
+    status('تمام، كمّل براحتك...');
   };
 
   r.onresult=e=>{
@@ -350,6 +356,8 @@ function finalizeVoiceTurn_(){
   turnProcessing=true;
   shouldKeepListening=false;
   speechActive=false;
+  $('startBtn').disabled=true;
+  $('stopBtn').disabled=true;
 
   clearTimeout(silenceTimer);
   clearTimeout(restartTimer);
@@ -370,7 +378,8 @@ function finalizeVoiceTurn_(){
   if(!t){
     turnProcessing=false;
     $('startBtn').disabled=false;
-    status('No speech captured.');
+    status('مفيش كلام اتسجل.');
+    $('startBtn').disabled=false;
     render();
     return;
   }
@@ -428,6 +437,45 @@ function stopNow(){
 function makeSession(){return 's'+Date.now().toString(36)+Math.random().toString(36).slice(2,10)}
 function jsonpRequest(params,timeoutMs=20000){return new Promise((resolve,reject)=>{const cb='mgVoiceCb_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7);let done=false;const script=document.createElement('script');const query=new URLSearchParams({...params,callback:cb});const timer=setTimeout(()=>finish(new Error('CRM request timed out.')),timeoutMs);function cleanup(){clearTimeout(timer);try{script.remove()}catch(e){}try{delete window[cb]}catch(e){window[cb]=undefined}}function finish(value,err){if(done)return;done=true;cleanup();err?reject(err):resolve(value)}window[cb]=data=>finish(data);script.onerror=()=>finish(null,new Error('Could not connect to MG RESALE.'));script.src=API+'?'+query.toString();document.head.appendChild(script)})}
 
+
+async function correctLiveSegment_(segment, seq){
+  const text=String(segment||'').trim();
+  if(!text || currentMode!=='call' || phoneMode) return;
+
+  try{
+    const data=await jsonpRequest({
+      api:'voiceCorrect',
+      text:text
+    },12000);
+
+    if(seq!==liveCorrectionSeq) return;
+
+    if(data && data.success && data.corrected){
+      correctedLiveText=(correctedLiveText+' '+String(data.corrected).trim())
+        .replace(/\s+/g,' ')
+        .trim();
+      render();
+    }
+  }catch(e){
+    // Live correction is non-blocking; raw speech remains visible.
+  }
+}
+
+function queueLiveCorrection(segment){
+  clearTimeout(liveCorrectionTimer);
+
+  const text=String(segment||'').trim();
+  if(!text || currentMode!=='call' || phoneMode) return;
+
+  const seq=++liveCorrectionSeq;
+
+  // Short debounce prevents sending every tiny recognition fragment to Gemini.
+  liveCorrectionTimer=setTimeout(()=>{
+    if(seq!==liveCorrectionSeq) return;
+    correctLiveSegment_(text,seq);
+  },450);
+}
+
 async function correctAnswerContext_(raw){
   const q=String(questionText||'').trim();
   const a=String(raw||'').trim();
@@ -451,8 +499,9 @@ async function correctAnswerContext_(raw){
 async function processConversation(){
   if(requestBusy || !conversation.length) return;
   requestBusy=true;
-  status('Connecting to MG RESALE...');
+  status('ببعت الكلام للـCRM...');
   $('startBtn').disabled=true;
+  $('stopBtn').disabled=true;
   const transcript=conversation.join('\n');
   const session=makeSession();
   try{const chunks=[];for(let i=0;i<transcript.length;i+=CHUNK_SIZE)chunks.push(transcript.slice(i,i+CHUNK_SIZE));for(let i=0;i<chunks.length;i++){let ok=false;for(let attempt=0;attempt<2&&!ok;attempt++){const r=await jsonpRequest({api:'voiceChunk',session,index:i,total:chunks.length,chunk:chunks[i]});ok=!!(r&&r.ok);if(!ok)await new Promise(x=>setTimeout(x,400))}if(!ok)throw new Error('Could not upload the voice conversation.')}status('MG RESALE is analyzing the conversation...');let result=null;for(let attempt=0;attempt<3;attempt++){result=await jsonpRequest({api:'voiceProcess',session});if(result&&result.retry){await new Promise(x=>setTimeout(x,500));continue}break}handleResult(result)
@@ -555,6 +604,7 @@ function handleResult(data){
   if(!data){showError('Empty response from CRM.');$('startBtn').disabled=false;return}
   if(data.success){
   finalText='';interimText='';
+  sessionFinalText='';sessionInterimText='';turnTranscript='';
   $('question').classList.add('hidden');
   questionText='';
   currentMode='call';
@@ -620,7 +670,7 @@ function reset(){
   $('startBtn').disabled=false;
   $('stopBtn').disabled=true;
   $('modeTitle').textContent='Ready';
-  $('modeText').textContent='Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically.';
+  $('modeText').textContent='Tap Start Voice once. Speak naturally. After 3 seconds of real silence, the CRM processes your turn automatically.';
   render();
   status('Ready.');
   clearError();
