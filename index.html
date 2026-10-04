@@ -685,14 +685,19 @@ function startListening_(newTurn){
   }
 }
 
-async function startSession(){
+function startSession(){
   clearError();
 
-  if(!ctor()){
+  const C=ctor();
+
+  if(!C){
     showError('Speech Recognition is not available in this browser. Use current Chrome or Edge.');
     return;
   }
 
+  // IMPORTANT: start SpeechRecognition directly from the button click.
+  // Do not await getUserMedia or any network operation first; keep the browser
+  // user-gesture context intact.
   if(window.__mgStartBusy) return;
   window.__mgStartBusy=true;
 
@@ -705,18 +710,15 @@ async function startSession(){
   $('stopBtn').disabled=true;
 
   $('modeTitle').textContent='Starting';
-  $('modeText').textContent='بتأكد الأول إن الميكروفون شغال، وبعدها هبدأ التسجيل.';
-  status('Checking microphone permission...');
+  $('modeText').textContent='سامعك. اتكلم براحتك، وأنا هجمع القصة كلها قبل ما أحفظها.';
+  status('Starting Speech Recognition...');
+
+  // Reset the startup-attempt counter for this manual Start.
+  clearRecognitionWatchdogs_();
+  recognitionStartAttempts=0;
 
   try{
-    await preflightMicrophone_();
-
-    if(!voiceEnabled){
-      return;
-    }
-
-    status('Microphone ready. Starting Speech Recognition...');
-
+    // This call happens synchronously in the button's click handler.
     startListening_(true);
   }catch(err){
     voiceEnabled=false;
@@ -727,7 +729,7 @@ async function startSession(){
     $('startBtn').disabled=false;
     $('stopBtn').disabled=true;
 
-    showError(err?.message||String(err));
+    showError('Could not start Speech Recognition: '+(err?.message||String(err)));
     status('');
   }finally{
     window.__mgStartBusy=false;
