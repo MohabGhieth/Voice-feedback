@@ -3,19 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>MG RESALE — Voice CRM V36.1 Final Rechecked</title>
+<title>MG RESALE — Voice CRM</title>
 <style>
 :root{--bg:#07131a;--card:#0d2029;--text:#f4fbfd;--muted:#9eb5bc;--accent:#6ee7d8;--danger:#ff8f8f;--border:rgba(255,255,255,.1)}
-*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at top,#12303a 0%,var(--bg) 55%,#040b10 100%);color:var(--text);font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px 14px}.app{width:100%;max-width:680px}.brand{text-align:center;margin-bottom:16px}.brand h1{margin:0;font-size:30px}.brand p{margin:6px 0;color:var(--muted)}.card{background:rgba(13,32,41,.96);border:1px solid var(--border);border-radius:24px;padding:22px}.mode,.question{border-radius:15px;padding:14px 15px;background:rgba(255,255,255,.04);border:1px solid var(--border);margin-bottom:14px;line-height:1.5}.mode b{color:var(--accent)}.question{background:rgba(110,231,216,.10);border-color:rgba(110,231,216,.26)}.question small{display:block;color:var(--muted);margin-bottom:7px}.question strong{display:block;font-size:20px;line-height:1.45}.transcript{min-height:180px;white-space:pre-wrap;direction:rtl;unicode-bidi:plaintext;background:#07161d;border:1px solid var(--border);border-radius:16px;padding:14px;line-height:1.55;overflow-wrap:anywhere;margin-bottom:14px}.buttons{display:grid;grid-template-columns:1fr 1fr;gap:10px}button{border:0;border-radius:14px;padding:15px 12px;font-size:16px;font-weight:800;cursor:pointer}.start{background:var(--accent);color:#06211f}.stop{background:#6f2424;color:#fff}.reset{background:#17333d;color:#fff}button:disabled{opacity:.55;cursor:not-allowed}.status{min-height:24px;margin-top:13px;color:var(--muted);font-size:14px}.error{margin-top:12px;padding:12px 13px;border-radius:12px;color:#ffd7d7;background:rgba(140,31,31,.22);border:1px solid rgba(255,143,143,.28)}.hidden{display:none!important}.manual{margin:0 0 14px;padding:14px;border-radius:15px;background:rgba(110,231,216,.08);border:1px solid rgba(110,231,216,.22)}.manual small{display:block;color:var(--muted);margin-bottom:7px}.manualRow{display:flex;gap:8px}.manual input{flex:1;min-width:0;border:1px solid var(--border);border-radius:12px;padding:13px 12px;background:#07161d;color:var(--text);font-size:18px;outline:none}.manual button{padding:13px 16px;background:var(--accent);color:#06211f}.manualHint{font-size:12px;color:var(--muted);margin-top:7px}.tip{color:var(--muted);font-size:12px;line-height:1.55;margin-top:13px}@media(max-width:500px){body{padding:12px 10px;align-items:flex-start}.card{padding:16px;margin-top:20px}.brand h1{font-size:27px}.buttons{grid-template-columns:1fr}}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at top,#12303a 0%,var(--bg) 55%,#040b10 100%);color:var(--text);font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px 14px}.app{width:100%;max-width:680px}.brand{text-align:center;margin-bottom:16px}.brand h1{margin:0;font-size:30px}.brand p{margin:6px 0;color:var(--muted)}.card{background:rgba(13,32,41,.96);border:1px solid var(--border);border-radius:24px;padding:22px}.mode,.question{border-radius:15px;padding:14px 15px;background:rgba(255,255,255,.04);border:1px solid var(--border);margin-bottom:14px;line-height:1.5}.mode b{color:var(--accent)}.question{background:rgba(110,231,216,.10);border-color:rgba(110,231,216,.26)}.question small{display:block;color:var(--muted);margin-bottom:7px}.question strong{display:block;font-size:20px;line-height:1.45}.transcript{min-height:180px;white-space:pre-wrap;direction:auto;background:#07161d;border:1px solid var(--border);border-radius:16px;padding:14px;line-height:1.55;overflow-wrap:anywhere;margin-bottom:14px}.buttons{display:grid;grid-template-columns:1fr 1fr;gap:10px}button{border:0;border-radius:14px;padding:15px 12px;font-size:16px;font-weight:800;cursor:pointer}.start{background:var(--accent);color:#06211f}.stop{background:#6f2424;color:#fff}.reset{background:#17333d;color:#fff}button:disabled{opacity:.55;cursor:not-allowed}.status{min-height:24px;margin-top:13px;color:var(--muted);font-size:14px}.error{margin-top:12px;padding:12px 13px;border-radius:12px;color:#ffd7d7;background:rgba(140,31,31,.22);border:1px solid rgba(255,143,143,.28)}.hidden{display:none!important}.tip{color:var(--muted);font-size:12px;line-height:1.55;margin-top:13px}@media(max-width:500px){body{padding:12px 10px;align-items:flex-start}.card{padding:16px;margin-top:20px}.brand h1{font-size:27px}.buttons{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <main class="app">
-<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — V36 Final AI Semantic / Story Continuation / Smart Correction</p></div>
+<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — Final</p></div>
 <section class="card">
-<div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. The Story never auto-finishes. Press Finish & Save only when you are completely done.</span><button id="changeLeadBtn" class="reset hidden" type="button" style="margin-top:10px;width:100%;">↔ Change Lead</button></div>
-<div id="question" class="question hidden"><small>CRM asks:</small><strong id="questionText"></strong><button id="interruptAnswerBtn" class="start hidden" type="button" style="margin-top:12px;width:100%;">🎙️ Interrupt & Answer</button></div>
-<div id="manualPanel" class="manual hidden"><small id="manualLabel">Manual entry</small><div class="manualRow"><input id="manualInput" type="tel" inputmode="numeric" autocomplete="off"><button id="manualSubmitBtn" type="button">Continue</button></div><div id="manualHint" class="manualHint"></div></div>
+<div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically and keeps your full paragraph.</span></div>
+<div id="question" class="question hidden"><small>CRM asks:</small><strong id="questionText"></strong></div>
 <div id="transcript" class="transcript">No speech captured yet.</div>
 <div class="buttons">
 <button id="startBtn" class="start" type="button">🎙️ Start Voice</button>
@@ -23,43 +22,18 @@
 <button id="resetBtn" class="reset" type="button">↺ Reset</button>
 </div>
 <div id="status" class="status"></div><div id="error" class="error hidden"></div>
-<div class="tip">One page only. The microphone recording starts before the live preview and is the authoritative Story source. Browser Speech Recognition is optional and only a live preview; the original audio is transcribed at Finish & Save. CRM questions start only after the Story is finalized. Questions are interruptible: start speaking and the assistant stops, or use the manual answer button. New-lead phone numbers are entered manually; existing leads can be identified by the last 4 digits.</div>
+<div class="tip">One page only. No popup. GitHub Pages owns Speech Recognition; Apps Script owns CRM/Gemini/Sheets. Live speech and AI correction stay visible while you speak.</div>
 </section>
 </main>
 <script>
 const API='https://script.google.com/macros/s/AKfycbyawltTbaWy291FyF95S0GX6oIlnoac5FzDVxFdDSqUG3VyRoTItG4Mj8zZolxRN_GIjw/exec';
 const SILENCE_MS=3000;
-// Story mode is NEVER auto-submitted on silence. The salesperson controls
-// the end of the story with Finish & Save. Silence is allowed inside a story.
-const CALL_STORY_AUTO_FINISH=false;
 const ANSWER_SILENCE_MS=15000;
 const PHONE_SILENCE_MS=15000;
-const CHUNK_SIZE=3600;
-const CHUNK_CONCURRENCY=4;
-const TTS_SERVER_TIMEOUT_MS=12000;
-const QUESTION_INTRO_TEXT='تمام يا عزيزي، نكمّل البيانات الناقصة.';
-const QUESTION_TTS_WAIT_MS=700;
-const LIVE_CORRECTION_DEBOUNCE_MS=500;
-const LIVE_CORRECTION_TIMEOUT_MS=4500;
-const LIVE_CORRECTION_MAX_SEGMENT=900;
-const LIVE_CORRECTION_MAX_RAW=12000;
-const TTS_CACHE_LIMIT=40;
-const CRM_PROCESS_TIMEOUT_MS=12000;
-const CRM_POLL_DELAY_MS=450;
-const CRM_POLL_ATTEMPTS=90;
+const CHUNK_SIZE=900;
+const CHUNK_CONCURRENCY=6;
 
 let recognition=null;
-let audioRecorder=null;
-let audioRecorderStream=null;
-let audioRecorderChunks=[];
-let audioRecorderMimeType='';
-let authoritativeAudioBlob=null;
-let authoritativeTranscript='';
-let audioRecordingStartedAt=0;
-let audioRecordingStoppedAt=0;
-let audioRecordingReadyPromise=null;
-let audioRecordingReady=false;
-let audioRecordingStopped=false;
 let recognitionStartTimer=null;
 let recognitionStartAttempts=0;
 let recognitionRestartTimer=null;
@@ -71,14 +45,6 @@ let processing=false;
 let currentMode='call';
 let questionText='';
 let conversation=[];
-let savedFeedbackText='';
-let savedNextActionText='';
-let savedNextActionDateTime='';
-let activeLead={name:'',number:'',row:0};
-try{
-  const storedLead=JSON.parse(localStorage.getItem('MG_RESale_ACTIVE_LEAD_V36') || localStorage.getItem('MG_RESale_ACTIVE_LEAD_V35')||'null');
-  if(storedLead&&(storedLead.number||storedLead.row)) activeLead={name:String(storedLead.name||''),number:String(storedLead.number||''),row:Number(storedLead.row||0)||0};
-}catch(e){}
 
 let turnFinal='';
 let turnInterim='';
@@ -102,80 +68,21 @@ let inactivityTimer=null;
 let restartTimer=null;
 let phoneMode=false;
 let phoneAttempts=0;
-let manualIdentityMode="";
-let questionInterruptStream=null;
-let questionInterruptContext=null;
-let questionInterruptAnalyser=null;
-let questionInterruptFrame=null;
-let questionInterruptRunning=false;
-let questionInterruptTriggered=false;
 
+let liveCorrectionTimer=null;
+let liveCorrectionSeq=0;
+let correctedLiveText='';
 let newLeadIntroPending=false;
 let questionIntroPlayed=false;
-let ttsCache=new Map();
-let ttsPending=new Map();
-let liveCorrectedText='';
-let liveCorrectionPending='';
-let liveCorrectionTimer=null;
-let liveCorrectionInFlight=false;
-let liveCorrectionGeneration=0;
-let liveCorrectionLastQueuedHash='';
-let liveCorrectionSession='';
-let liveCorrectionRawSent='';
-let speechOutputContext=null;
-let activeAudioSource=null;
-let speechRunId=0;
 
 const $=id=>document.getElementById(id);
-
-// Stable, synchronous hash used only to prevent duplicate processing of the
-// exact same transcript. This MUST exist before processConversation() runs.
-function stableHash_(text){
-  const s=String(text||'');
-  let h=2166136261;
-  for(let i=0;i<s.length;i++){
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h,16777619);
-  }
-  return (h>>>0).toString(16);
-}
-
-let lastProcessedTranscriptHash='';
-let requestGeneration=0;
 
 function status(t){ $('status').textContent=t||''; }
 function showError(t){ $('error').textContent=t||''; $('error').classList.remove('hidden'); }
 function clearError(){ $('error').textContent=''; $('error').classList.add('hidden'); }
 
 function currentVoiceText_(){
-  const raw=(turnFinal+' '+turnInterim).replace(/\s+/g,' ').trim();
-  return currentMode==='call' ? normalizeSpokenAmounts_(raw) : raw;
-}
-
-// Chrome/Edge can end and restart a SpeechRecognition session while the user
-// is still telling the Story. Any interim text that existed at onend must not
-// disappear. This merge keeps the carry-over text while removing the common
-// overlap when the restarted session repeats the same words.
-function mergeSpeechText_(base, addition){
-  const a=String(base||'').replace(/\s+/g,' ').trim();
-  const b=String(addition||'').replace(/\s+/g,' ').trim();
-  if(!a) return b;
-  if(!b) return a;
-  if(a===b) return a;
-  if(a.endsWith(b)) return a;
-  if(b.startsWith(a)) return b;
-
-  const aw=a.split(' ');
-  const bw=b.split(' ');
-  const max=Math.min(14,aw.length,bw.length);
-  for(let n=max;n>=1;n--){
-    const left=aw.slice(-n).join(' ');
-    const right=bw.slice(0,n).join(' ');
-    if(left===right){
-      return (a+' '+bw.slice(n).join(' ')).replace(/\s+/g,' ').trim();
-    }
-  }
-  return (a+' '+b).replace(/\s+/g,' ').trim();
+  return (turnFinal+' '+turnInterim).replace(/\s+/g,' ').trim();
 }
 
 function activeSilenceMs_(){
@@ -218,47 +125,6 @@ function maskConversationForDisplay_(line){
     .trim();
 }
 
-function isolatePhoneForDisplay_(text){
-  return String(text||'').replace(/(PHONE\s+)([0-9]{10,12})/gi, '$1\u2066$2\u2069');
-}
-
-function formatConversationLine_(line){
-  const s=String(line||'');
-  if(/^ANSWER\s*:\s*PHONE\b/i.test(s)) return '';
-  return isolatePhoneForDisplay_(s);
-}
-
-function setActiveLead_(name,number,row){
-  const n=String(number||'').replace(/\D/g,'');
-  const r=Number(row||0)||0;
-  activeLead={name:String(name||''),number:n,row:r};
-  try{
-    if(n||r) localStorage.setItem('MG_RESale_ACTIVE_LEAD_V36',JSON.stringify(activeLead));
-    else localStorage.removeItem('MG_RESale_ACTIVE_LEAD_V36'); localStorage.removeItem('MG_RESale_ACTIVE_LEAD_V35');
-  }catch(e){}
-  updateActiveLeadUi_();
-}
-
-function clearActiveLead_(){
-  setActiveLead_('','');
-  status('تم تغيير الـLead. المكالمة الجديدة هتتعامل مع Lead جديد أو هتطلب تحديد Lead موجود.');
-}
-
-function updateActiveLeadUi_(){
-  const btn=$('changeLeadBtn');
-  if(!btn) return;
-  if(activeLead.number||activeLead.row){
-    btn.classList.remove('hidden');
-    btn.textContent='↔ Change Lead' + (activeLead.name ? ' — '+activeLead.name : (activeLead.row ? ' — Row '+activeLead.row : ''));
-    if(currentMode==='call'&&!processing){
-      $('modeText').textContent='Continuing Lead: '+(activeLead.name||('••••'+activeLead.number.slice(-4)))+'. اتكلم براحتك، وأي Voice جديدة هتتضاف لنفس الـStory لحد ما تغيّر الـLead.';
-    }
-  }else{
-    btn.classList.add('hidden');
-    btn.disabled=false;
-  }
-}
-
 function render(){
   const rows=conversation
     .filter(function(line){
@@ -266,232 +132,22 @@ function render(){
              !/^ANSWER\s*:/i.test(String(line||''));
     })
     .map(maskConversationForDisplay_)
-    .map(formatConversationLine_)
     .filter(Boolean);
 
-  if(savedFeedbackText){
-    rows.push('FEEDBACK (SAVED): '+savedFeedbackText);
-  }
-  if(savedNextActionText){
-    rows.push('NEXT ACTION: '+savedNextActionText + (savedNextActionDateTime ? ' — ' + savedNextActionDateTime : ''));
-  }
-
   const live=currentVoiceText_();
-  if(currentMode==='call'){
-    // Once Gemini has a correction for the complete finalized Story, show that
-    // corrected Story in the main transcript area. Do not display the raw and
-    // corrected versions as two competing copies of the same sentence.
-    const visibleStory=liveCorrectedText || live;
-    if(visibleStory) rows.push('STORY (LIVE): '+maskConversationForDisplay_(visibleStory));
-  }else if(live){
-    rows.push('ANSWER (LIVE): '+live);
+  if(live) rows.push('VOICE (LIVE): '+live);
+
+  if(correctedLiveText && correctedLiveText!==live){
+    rows.push('AI CORRECTED (LIVE): '+correctedLiveText);
   }
 
   $('transcript').textContent=rows.length
     ? rows.join('\n\n')
     : 'No speech captured yet.';
-  updateActiveLeadUi_();
-}
-
-function clearLiveCorrection_(){
-  clearTimeout(liveCorrectionTimer);
-  liveCorrectionTimer=null;
-  liveCorrectionPending='';
-  liveCorrectionGeneration++;
-  liveCorrectionInFlight=false;
-  liveCorrectionLastQueuedHash='';
-  liveCorrectionSession='';
-  liveCorrectionRawSent='';
-  liveCorrectedText='';
-}
-
-function queueLiveCorrection_(segment){
-  if(currentMode!=='call' || processing || !voiceEnabled) return;
-  let piece=String(segment||'').replace(/\s+/g,' ').trim();
-  if(!piece) return;
-
-  // The visible correction is based on the COMPLETE finalized Story, not on
-  // isolated chunks. This is important when the salesperson corrects a number
-  // or phrase they just said, e.g. "40 to 50" -> "40 million to 50 million".
-  // Gemini can then replace the earlier mistaken wording instead of appending a
-  // second, conflicting sentence.
-  if(piece.length>LIVE_CORRECTION_MAX_SEGMENT){
-    piece=piece.slice(0,LIVE_CORRECTION_MAX_SEGMENT);
-  }
-
-  const pieceHash=stableHash_(piece.toLowerCase());
-  if(pieceHash===liveCorrectionLastQueuedHash) return;
-  liveCorrectionLastQueuedHash=pieceHash;
-
-  const fullRaw=normalizeSpokenAmounts_(String(turnFinal||'').replace(/\s+/g,' ').trim());
-  if(!fullRaw) return;
-
-  // Keep the latest complete raw Story. The drain step sends only the delta
-  // that has not already been uploaded to Apps Script, avoiding giant JSONP
-  // URLs while still letting the server maintain the full correction context.
-  liveCorrectionPending=fullRaw.slice(0,LIVE_CORRECTION_MAX_RAW);
-
-  clearTimeout(liveCorrectionTimer);
-  liveCorrectionTimer=setTimeout(drainLiveCorrection_,LIVE_CORRECTION_DEBOUNCE_MS);
-}
-
-async function drainLiveCorrection_(){
-  liveCorrectionTimer=null;
-  if(liveCorrectionInFlight || !liveCorrectionPending || currentMode!=='call' || processing || !voiceEnabled) return;
-
-  const raw=String(liveCorrectionPending||'').replace(/\s+/g,' ').trim();
-  liveCorrectionPending='';
-  if(!raw) return;
-
-  liveCorrectionInFlight=true;
-  const generation=liveCorrectionGeneration;
-
-  try{
-    const isAppend=raw.indexOf(liveCorrectionRawSent)===0;
-    const delta=isAppend ? raw.slice(liveCorrectionRawSent.length).trim() : raw;
-
-    // If nothing new was added, there is nothing to send. This can happen when
-    // Chromium repeats a finalized result after restarting recognition.
-    if(!delta){
-      liveCorrectionInFlight=false;
-      return;
-    }
-
-    const data=await jsonpRequest({
-      api:'voiceCorrect',
-      session:liveCorrectionSession,
-      text:delta,
-      replace:isAppend?'0':'1'
-    },LIVE_CORRECTION_TIMEOUT_MS);
-
-    if(generation!==liveCorrectionGeneration) return;
-
-    if(data && data.success && data.corrected){
-      const corrected=String(data.corrected).replace(/\s+/g,' ').trim();
-      if(corrected){
-        // REPLACE the visible corrected Story. Do not append corrections. This
-        // allows a later self-correction to rewrite the earlier phrase.
-        liveCorrectedText=corrected;
-        liveCorrectionRawSent=raw;
-        render();
-        if(currentMode==='call' && shouldKeepListening && !processing){
-          status('Gemini بيصحح الكلام في الخلفية... كمّل براحتك.');
-        }
-      }
-    }
-  }catch(e){
-    // Best effort only. A correction failure can never stop listening or CRM.
-  }finally{
-    liveCorrectionInFlight=false;
-    if(liveCorrectionPending && currentMode==='call' && !processing && voiceEnabled){
-      clearTimeout(liveCorrectionTimer);
-      liveCorrectionTimer=setTimeout(drainLiveCorrection_,300);
-    }
-  }
-}
-
-function pickRecorderMimeTypes_(){
-  const candidates=['audio/mp4','audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/ogg'];
-  if(!window.MediaRecorder) return [];
-  const supported=[];
-  for(const type of candidates){
-    try{ if(MediaRecorder.isTypeSupported(type)) supported.push(type); }catch(e){}
-  }
-  return supported;
-}
-
-async function startAuthoritativeRecording_(){
-  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('This browser cannot access the microphone.');
-  if(!window.MediaRecorder) throw new Error('This browser does not support secure audio recording.');
-  stopAuthoritativeRecording_();
-  const mimeCandidates=pickRecorderMimeTypes_();
-  const constraints={audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false};
-  audioRecordingReady=false;
-  audioRecordingReadyPromise=(async()=>{
-    audioRecorderStream=await navigator.mediaDevices.getUserMedia(constraints);
-    audioRecorderChunks=[]; authoritativeAudioBlob=null; authoritativeTranscript=''; audioRecordingStopped=false; audioRecordingStoppedAt=0;
-
-    let recorder=null;
-    let lastError=null;
-    const optionsList=mimeCandidates.map(type=>({mimeType:type,audioBitsPerSecond:64000}));
-    optionsList.push({audioBitsPerSecond:64000});
-    for(const options of optionsList){
-      try{ recorder=new MediaRecorder(audioRecorderStream,options); break; }catch(e){ lastError=e; }
-    }
-    if(!recorder){
-      try{ audioRecorderStream.getTracks().forEach(t=>t.stop()); }catch(e){}
-      audioRecorderStream=null;
-      throw new Error('The browser could not initialize a supported audio recorder: '+(lastError?.message||'unknown error'));
-    }
-
-    audioRecorder=recorder;
-    audioRecorderMimeType=String(audioRecorder.mimeType||mimeCandidates[0]||'audio/mp4');
-    audioRecorder.ondataavailable=e=>{if(e.data&&e.data.size) audioRecorderChunks.push(e.data);};
-    audioRecorder.onerror=e=>{showError('Audio recording error: '+(e.error?.message||e.error?.name||'unknown'));};
-    audioRecorder.start(250); audioRecordingStartedAt=Date.now(); audioRecordingReady=true;
-    status('🔴 Recording — اتكلم براحتك. التسجيل الأصلي بدأ بالفعل.'); return true;
-  })();
-  try{return await audioRecordingReadyPromise;}catch(err){audioRecordingReady=false; audioRecordingReadyPromise=null; throw err;}
-}
-function stopAuthoritativeRecording_(){
-  audioRecordingStopped=true; audioRecordingStoppedAt=Date.now();
-  const recorder=audioRecorder; if(recorder){try{if(recorder.state!=='inactive') recorder.stop();}catch(e){}}
-  if(audioRecorderStream){try{audioRecorderStream.getTracks().forEach(t=>t.stop());}catch(e){}} audioRecorderStream=null;
-}
-function waitForRecorderBlob_(){
-  return new Promise((resolve,reject)=>{
-    const finish=()=>{
-      if(authoritativeAudioBlob){resolve(authoritativeAudioBlob);return;}
-      const blob=new Blob(audioRecorderChunks,{type:audioRecorderMimeType||'audio/mp4'}); audioRecorder=null;
-      if(!blob.size){reject(new Error('The original audio recording is empty.'));return;}
-      authoritativeAudioBlob=blob; const durationMs=Math.max(0,(audioRecordingStoppedAt||Date.now())-(audioRecordingStartedAt||Date.now()));
-      if(durationMs<700){reject(new Error('The original recording is too short. Please record again.'));return;} resolve(blob);
-    };
-    const afterReady=()=>{const recorder=audioRecorder; if(!recorder&&!audioRecorderChunks.length){reject(new Error('The original audio recording was not captured.'));return;} if(recorder&&recorder.state!=='inactive'){const old=recorder.onstop; recorder.onstop=()=>{try{if(old)old();}catch(e){} finish();}; try{recorder.stop();}catch(e){reject(e);}}else setTimeout(finish,250);};
-    if(audioRecordingReadyPromise) audioRecordingReadyPromise.then(afterReady).catch(reject); else afterReady();
-  });
-}
-function dataUrlFromBlob_(blob){
-  return new Promise((resolve,reject)=>{const reader=new FileReader(); reader.onload=()=>resolve(String(reader.result||'')); reader.onerror=()=>reject(reader.error||new Error('Could not read audio recording.')); reader.readAsDataURL(blob);});
-}
-
-function primeSpeechOutput_(){
-  if(!('speechSynthesis' in window)) return;
-  try{
-    speechSynthesis.getVoices();
-    const u=new SpeechSynthesisUtterance('جاهز');
-    u.lang='ar-EG';
-    u.volume=0;
-    u.rate=1;
-    speechSynthesis.cancel();
-    speechSynthesis.speak(u);
-  }catch(e){}
-}
-
-function primeAudioOutput_(){
-  try{
-    const AC=window.AudioContext||window.webkitAudioContext;
-    if(!AC) return null;
-    if(!speechOutputContext) speechOutputContext=new AC();
-    const p=speechOutputContext.resume();
-    if(p&&typeof p.catch==='function') p.catch(()=>{});
-    return speechOutputContext;
-  }catch(e){
-    return null;
-  }
-}
-
-if('speechSynthesis' in window){
-  speechSynthesis.onvoiceschanged=()=>{ try{ speechSynthesis.getVoices(); }catch(e){} };
 }
 
 function ctor(){
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
-}
-
-function isAppleMobile_(){
-  const ua=String(navigator.userAgent||'');
-  return /iPhone|iPad|iPod/i.test(ua) || (navigator.platform==='MacIntel' && Number(navigator.maxTouchPoints||0)>1);
 }
 
 function arabicVoice(){
@@ -576,7 +232,7 @@ async function startVAD_(){
         clearTimeout(inactivityTimer);
       }
 
-      if(CALL_STORY_AUTO_FINISH && shouldKeepListening && !processing && !vadSuppressed && currentMode!=='call' && currentVoiceText_() && lastAudibleAt){
+      if(shouldKeepListening && !processing && !vadSuppressed && currentVoiceText_() && lastAudibleAt){
         if(Date.now()-lastAudibleAt >= activeSilenceMs_()){
           finishTurn_('real-microphone-silence');
           return;
@@ -594,336 +250,87 @@ async function startVAD_(){
   }
 }
 
-function normalizeTtsText_(text){
-  let s=String(text||'').replace(/\s+/g,' ').trim();
-  if(!s) return '';
-
-  // Keep the screen question untouched, but give TTS a clean Egyptian-Arabic
-  // sentence. These phonetic forms prevent RTL/LTR mixing from breaking speech.
-  const replacements=[
-    [/\bCold\s*Call\b/gi,'كولد كول'],
-    [/\bElement\s*Direct\b/gi,'إليمنت دايركت'],
-    [/\bElement\b/gi,'إليمنت'],
-    [/\bDirect\b/gi,'دايركت'],
-    [/\bFB\b/gi,'فيسبوك'],
-    [/\bRefell\b/gi,'ريفيل'],
-    [/\bReferr?al\b/gi,'ريفيرال'],
-    [/\bStandalone\b/gi,'ستاند ألون'],
-    [/\bTwin\s*House\b/gi,'توين هاوس'],
-    [/\bTown\s*House\b/gi,'تاون هاوس'],
-    [/\bMivida\b/gi,'ميفيدا'],
-    [/\bUptown\s*Cairo\b/gi,'أب تاون كايرو'],
-    [/\bOne\s*Ninety\b/gi,'وان ناينتي'],
-    [/\bMountain\s*View\b/gi,'ماونتن فيو'],
-    [/\bGroova\b/gi,'جروڤا'],
-    [/\bHyde\s*Park\b/gi,'هايد بارك'],
-    [/\bThe\s*Brooks\b/gi,'ذا بروكس']
-  ];
-  replacements.forEach(([re,v])=>{s=s.replace(re,v);});
-  return s;
-}
-
-function cacheTts_(key,data){
-  if(!key||!data) return;
-  if(ttsCache.size>=TTS_CACHE_LIMIT){
-    const first=ttsCache.keys().next().value;
-    if(first) ttsCache.delete(first);
-  }
-  ttsCache.set(key,data);
-}
-
-function getCachedTts_(text){
-  const key=normalizeTtsText_(text);
-  return ttsCache.get(key)||null;
-}
-
-async function fetchTts_(text){
-  const spoken=normalizeTtsText_(text);
-  if(!spoken) return null;
-  const cached=getCachedTts_(spoken);
-  if(cached) return cached;
-  if(ttsPending.has(spoken)) return ttsPending.get(spoken);
-
-  const promise=jsonpRequest({api:'voiceSpeak',text:spoken},TTS_SERVER_TIMEOUT_MS)
-    .then(data=>{
-      if(data&&data.success&&data.audioBase64){
-        const audioData={
-          src:'data:'+(data.mimeType||'audio/wav')+';base64,'+data.audioBase64,
-          cached:!!data.cached
-        };
-        cacheTts_(spoken,audioData);
-        return audioData;
-      }
-      return null;
-    })
-    .catch(()=>null)
-    .finally(()=>ttsPending.delete(spoken));
-
-  ttsPending.set(spoken,promise);
-  return promise;
-}
-
-function browserVoice_(){
-  if(!('speechSynthesis' in window)) return null;
-  const voices=speechSynthesis.getVoices()||[];
-  const score=v=>{
-    const lang=String(v.lang||'').toLowerCase();
-    const name=String(v.name||'').toLowerCase();
-    let n=0;
-    if(lang==='ar-eg') n+=1000;
-    else if(lang.startsWith('ar-')) n+=700;
-    else if(lang==='ar') n+=500;
-    if(/microsoft|online|natural|salma|hoda|laila|tarik/.test(name)) n+=100;
-    return n;
-  };
-  return voices.slice().sort((a,b)=>score(b)-score(a))[0]||null;
-}
-
-function stopCurrentSpeechOutput_(){
-  speechRunId++;
-  try{speechSynthesis.cancel();}catch(e){}
-  if(activeAudioSource){
-    try{activeAudioSource.onended=null; activeAudioSource.stop(0);}catch(e){}
-    activeAudioSource=null;
-  }
-}
-
-function fallbackSpeech_(text,listenAfter){
-  if(!('speechSynthesis' in window)){
-    vadSuppressed=false;
-    if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),80);
-    return;
-  }
-
-  const run=++speechRunId;
-  try{speechSynthesis.cancel();}catch(e){}
-
-  const spoken=normalizeTtsText_(text);
-  const u=new SpeechSynthesisUtterance(spoken);
-  u.lang='ar-EG';
-  u.rate=1.12;
-  u.pitch=1;
-  u.volume=1;
-  const v=browserVoice_();
-  if(v) u.voice=v;
-
-  const finish=()=>{
-    stopQuestionInterruptMonitor_();
-    if(run!==speechRunId) return;
-    vadSuppressed=false;
-    if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),80);
-  };
-  u.onstart=()=>{status('المساعد بيتكلم...'); if(listenAfter) startQuestionInterruptMonitor_();};
-  u.onend=finish;
-  u.onerror=finish;
-  try{ speechSynthesis.speak(u); }
-  catch(e){ finish(); }
-}
-
-function decodeBase64ToBuffer_(dataUrl){
-  const comma=String(dataUrl||'').indexOf(',');
-  if(comma<0) throw new Error('Invalid audio data.');
-  const base64=String(dataUrl).slice(comma+1);
-  const binary=atob(base64);
-  const bytes=new Uint8Array(binary.length);
-  for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
-  return bytes.buffer;
-}
-
-async function playAudio_(src,listenAfter,spoken){
-  const run=++speechRunId;
-  try{speechSynthesis.cancel();}catch(e){}
-
-  const ctx=primeAudioOutput_();
-  if(!ctx) throw new Error('Web Audio is not available.');
-  await ctx.resume();
-  if(run!==speechRunId) return;
-
-  const bytes=decodeBase64ToBuffer_(src);
-  const buffer=await ctx.decodeAudioData(bytes.slice(0));
-  if(run!==speechRunId) return;
-
-  const source=ctx.createBufferSource();
-  source.buffer=buffer;
-  // Keep the transition line intentionally brisk, and make CRM questions
-  // slightly faster than ordinary assistant speech. This is playback speed,
-  // not a second TTS generation, so it does not add latency or alter text.
-  if(/^تمام يا عزيزي،?\s*نكمّل البيانات الناقصة\.?$/i.test(spoken)) source.playbackRate.value=1.28;
-  else if(listenAfter) source.playbackRate.value=1.10;
-  source.connect(ctx.destination);
-  activeAudioSource=source;
-  status('المساعد بيتكلم...');
-
-  source.onended=()=>{
-    stopQuestionInterruptMonitor_();
-    if(run!==speechRunId) return;
-    activeAudioSource=null;
-    vadSuppressed=false;
-    if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),60);
-  };
-
-  source.start(0);
-  if(listenAfter) startQuestionInterruptMonitor_();
-}
-
-
-function stopQuestionInterruptMonitor_(){
-  questionInterruptRunning=false;
-  if(questionInterruptFrame) cancelAnimationFrame(questionInterruptFrame);
-  questionInterruptFrame=null;
-  if(questionInterruptStream){try{questionInterruptStream.getTracks().forEach(t=>t.stop());}catch(e){}}
-  questionInterruptStream=null;
-  if(questionInterruptContext){try{questionInterruptContext.close();}catch(e){}}
-  questionInterruptContext=null;
-  questionInterruptAnalyser=null;
-  questionInterruptTriggered=false;
-}
-
-async function startQuestionInterruptMonitor_(){
-  stopQuestionInterruptMonitor_();
-  if(!('mediaDevices' in navigator) || !navigator.mediaDevices.getUserMedia) return false;
-  try{
-    questionInterruptStream=await navigator.mediaDevices.getUserMedia({
-      audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true},
-      video:false
-    });
-    const AC=window.AudioContext||window.webkitAudioContext;
-    if(!AC) return false;
-    questionInterruptContext=new AC();
-    if(questionInterruptContext.state==='suspended'){try{await questionInterruptContext.resume();}catch(e){}}
-    const source=questionInterruptContext.createMediaStreamSource(questionInterruptStream);
-    questionInterruptAnalyser=questionInterruptContext.createAnalyser();
-    questionInterruptAnalyser.fftSize=2048;
-    questionInterruptAnalyser.smoothingTimeConstant=.08;
-    source.connect(questionInterruptAnalyser);
-    const data=new Float32Array(questionInterruptAnalyser.fftSize);
-    let noise=.006;
-    let voiceSince=0;
-    questionInterruptRunning=true;
-    const loop=()=>{
-      if(!questionInterruptRunning||!questionInterruptAnalyser) return;
-      questionInterruptAnalyser.getFloatTimeDomainData(data);
-      let sum=0; for(let i=0;i<data.length;i++) sum+=data[i]*data[i];
-      const rms=Math.sqrt(sum/data.length);
-      if(rms<.012) noise=noise*.97+rms*.03;
-      const threshold=Math.max(.022,noise*3.8);
-      if(rms>=threshold){
-        if(!voiceSince) voiceSince=Date.now();
-        if(Date.now()-voiceSince>=170 && !questionInterruptTriggered){
-          questionInterruptTriggered=true;
-          stopQuestionInterruptMonitor_();
-          stopCurrentSpeechOutput_();
-          vadSuppressed=false;
-          status('سمعتك — اتفضل كمّل إجابتك.');
-          setTimeout(()=>{if(listenAfter&&voiceEnabled&&!processing) startListening_(true);},90);
-          return;
-        }
-      }else{
-        voiceSince=0;
-      }
-      questionInterruptFrame=requestAnimationFrame(loop);
-    };
-    questionInterruptFrame=requestAnimationFrame(loop);
-    return true;
-  }catch(e){
-    stopQuestionInterruptMonitor_();
-    return false;
-  }
-}
-
-function enableManualAnswer_(mode,label,hint,placeholder){
-  manualIdentityMode=mode||'';
-  $('manualLabel').textContent=label||'Manual entry';
-  $('manualHint').textContent=hint||'';
-  $('manualInput').placeholder=placeholder||'';
-  $('manualSubmitBtn').textContent=mode==='new-phone' ? 'Save Number' : mode==='last4' ? 'Find Lead' : 'Continue';
-  $('manualInput').value='';
-  $('manualPanel').classList.remove('hidden');
-  setTimeout(()=>{try{$('manualInput').focus();}catch(e){}},120);
-}
-function disableManualAnswer_(){
-  manualIdentityMode='';
-  $('manualInput').value='';
-  $('manualPanel').classList.add('hidden');
-}
-function submitManualAnswer_(){
-  if(processing) return;
-  const raw=String($('manualInput').value||'').trim();
-  if(!raw){showError('اكتب البيانات الأول.');return;}
-  stopCurrentSpeechOutput_();
-  stopQuestionInterruptMonitor_();
-  clearError();
-  processing=true;
-  shouldKeepListening=false;
-  try{if(recognition) recognition.abort();}catch(e){}
-  const mode=manualIdentityMode;
-  disableManualAnswer_();
-  if(mode==='new-phone'){
-    const digits=normalizeSpokenDigits_(raw);
-    if(!validEgyptianMobileDigits_(digits)){
-      processing=false;
-      showError('رقم الموبايل لازم يكون رقم مصري صحيح من 11 رقم.');
-      enableManualAnswer_('new-phone','رقم موبايل العميل','لـ New Lead — اكتب الرقم كاملًا، 11 رقم.','01xxxxxxxxx');
-      return;
-    }
-    conversation.push('ANSWER: PHONE '+digits);
-  }else if(mode==='last4'){
-    const digits=raw.replace(/[^0-9٠-٩]/g,'').replace(/[٠-٩]/g,d=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
-    if(!/^\d{4}$/.test(digits)){
-      processing=false;
-      showError('اكتب آخر 4 أرقام فقط.');
-      enableManualAnswer_('last4','آخر 4 أرقام من الموبايل','لـ Existing Lead — اكتب آخر 4 أرقام فقط.','1234');
-      return;
-    }
-    conversation.push('ANSWER: CLIENT_LAST4 '+digits);
-  }
-  render();
-  processConversation();
-}
-
 async function speak(text,listenAfter){
   if(!text) return;
 
-  stopCurrentSpeechOutput_();
   shouldKeepListening=false;
   vadSuppressed=true;
   clearTimeout(silenceTimer);
   clearInactivityTimer_();
   stopVAD_();
 
-  const spoken=normalizeTtsText_(text);
-  const cached=getCachedTts_(spoken);
-  const myRun=speechRunId;
+  const request=jsonpRequest({
+    api:'voiceSpeak',
+    text:String(text).trim()
+  },10000);
 
-  if(cached&&cached.src){
-    try{ await playAudio_(cached.src,listenAfter,spoken); return; }
-    catch(e){ fallbackSpeech_(spoken,listenAfter); return; }
-  }
+  let fallbackTimer;
+  let finished=false;
 
-  // Give the already-prefetched Egyptian server TTS a short head start. This
-  // avoids the old "no question audio" problem while never waiting seconds.
+  const fallbackPromise=new Promise(resolve=>{
+    fallbackTimer=setTimeout(()=>{
+      if(finished) return;
+      finished=true;
+      resolve(null);
+    },2200);
+  });
+
   try{
-    const serverPromise=fetchTts_(spoken);
-    const result=await Promise.race([
-      serverPromise,
-      new Promise(resolve=>setTimeout(()=>resolve(null),QUESTION_TTS_WAIT_MS))
+    const winner=await Promise.race([
+      request.then(data=>({data:data})).catch(()=>({data:null})),
+      fallbackPromise.then(()=>({data:null,fallback:true}))
     ]);
 
-    if(speechRunId!==myRun) return;
-    if(result&&result.src){
-      try{ await playAudio_(result.src,listenAfter,spoken); return; }
-      catch(e){}
-    }
-  }catch(e){}
+    clearTimeout(fallbackTimer);
 
-  if(speechRunId!==myRun) return;
-  fallbackSpeech_(spoken,listenAfter);
+    if(winner&&winner.data&&winner.data.success&&winner.data.audioBase64){
+      const audio=new Audio('data:'+(winner.data.mimeType||'audio/wav')+';base64,'+winner.data.audioBase64);
+      status('المساعد بيتكلم...');
+      audio.onended=()=>{
+        vadSuppressed=false;
+        if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),300);
+      };
+      audio.onerror=()=>fallbackSpeech_(text,listenAfter);
+      try{
+        await audio.play();
+        return;
+      }catch(e){}
+    }
+  }catch(e){
+    clearTimeout(fallbackTimer);
+  }
+
+  fallbackSpeech_(text,listenAfter);
 }
 
-function prefetchQuestionTts_(text){
-  const spoken=normalizeTtsText_(text);
-  if(!spoken||getCachedTts_(spoken)||ttsPending.has(spoken)) return;
-  fetchTts_(spoken).catch(()=>{});
+function fallbackSpeech_(text,listenAfter){
+  if(!('speechSynthesis' in window)){
+    vadSuppressed=false;
+    if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),150);
+    return;
+  }
+  try{speechSynthesis.cancel();}catch(e){}
+
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang='ar-EG';
+  u.rate=.92;
+  u.pitch=1;
+  u.volume=1;
+
+  const voices=speechSynthesis.getVoices()||[];
+  const v=voices.find(x=>/^ar-EG$/i.test(x.lang||''))||voices.find(x=>/^ar[-_]/i.test(x.lang||''));
+  if(v) u.voice=v;
+
+  u.onstart=()=>status('المساعد بيتكلم...');
+  u.onend=()=>{
+    vadSuppressed=false;
+    if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),250);
+  };
+  u.onerror=()=>{
+    vadSuppressed=false;
+    if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),250);
+  };
+  speechSynthesis.speak(u);
 }
 
 
@@ -946,8 +353,6 @@ function scheduleRealSilence_(){
   clearTimeout(silenceTimer);
 
   if(!shouldKeepListening || processing) return;
-  // In the initial story phase, silence is not an answer boundary.
-  if(currentMode==='call' && !CALL_STORY_AUTO_FINISH) return;
 
   const text=currentVoiceText_();
 
@@ -1049,19 +454,7 @@ function scheduleRecognitionRestart_(reason){
       recognition.start();
       armRecognitionStartWatchdog_();
     }catch(e){
-      recognitionStartAttempts++;
-      try{ if(recognition) recognition.abort(); }catch(_e){}
-      if(recognitionStartAttempts>=4){
-        shouldKeepListening=false;
-        isListening=false;
-        clearRecognitionWatchdogs_();
-        $('startBtn').disabled=false;
-        $('stopBtn').disabled=true;
-        showError('Speech Recognition could not restart after 4 attempts. The original recording is still safe. You can finish the Story.');
-        status('');
-        return;
-      }
-      scheduleRecognitionRestart_('Speech Recognition retrying ('+recognitionStartAttempts+'/4)...');
+      scheduleRecognitionRestart_('Speech Recognition retrying...');
     }
   },450);
 }
@@ -1101,119 +494,6 @@ function armRecognitionStartWatchdog_(){
   },4000);
 }
 
-
-// =========================================================
-// VOICE ENGINE V17 — ASR quality helpers
-// =========================================================
-const SPEECH_CONTEXT_PHRASES_=[
-  'مليون','ملايين','ألف','ألفين','ميزانية','budget','million','thousand',
-  'Groova','Groova East Hills','Mivida','Mivida New Cairo','Mountain View',
-  'Mountain View Ras El Hekma','One Ninety','Uptown Cairo','Marassi',
-  'Hacienda Bay','Hyde Park','Azad','Azzar','Ramla','Ras El Hekma',
-  'Standalone','Twin House','Town House','Villa','Apartment','BUA','PUA','DP',
-  'Element','Facebook','FB','Cold Call','Refell','resale','landscape','open view'
-];
-
-const AR_AMOUNT_WORDS_={
-  'صفر':0,'واحد':1,'واحدة':1,'اتنين':2,'اثنين':2,'اثنان':2,'اتنان':2,
-  'تلاتة':3,'ثلاثة':3,'اربعة':4,'أربعة':4,'خمسة':5,'ستة':6,'سته':6,
-  'سبعة':7,'سبعه':7,'تمانية':8,'ثمانية':8,'تسعة':9,'تسعه':9,
-  'عشرة':10,'عشره':10,'حداشر':11,'احداشر':11,'اتناشر':12,'اثناشر':12,
-  'تلتاشر':13,'ثلاثتاشر':13,'اربعتاشر':14,'أربعتاشر':14,'خمستاشر':15,
-  'ستاشر':16,'سبعتاشر':17,'تمنتاشر':18,'تممنتاشر':18,'تسعتاشر':19,
-  'عشرين':20,'عشرون':20,'تلاتين':30,'ثلاثين':30,'ثلاثون':30,
-  'اربعين':40,'أربعين':40,'اربعون':40,'أربعون':40,
-  'خمسين':50,'خمسون':50,'ستين':60,'ستون':60,'سبعين':70,'سبعون':70,
-  'تمانين':80,'ثمانين':80,'ثمانون':80,'تسعين':90,'تسعون':90,
-  'مية':100,'مئة':100,'مائة':100
-};
-const EN_AMOUNT_WORDS_={
-  zero:0,one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,
-  ten:10,eleven:11,twelve:12,thirteen:13,fourteen:14,fifteen:15,
-  sixteen:16,seventeen:17,eighteen:18,nineteen:19,twenty:20,thirty:30,
-  forty:40,fifty:50,sixty:60,seventy:70,eighty:80,ninety:90
-};
-
-function numberWordValue_(word){
-  const w=String(word||'').trim().toLowerCase();
-  if(Object.prototype.hasOwnProperty.call(AR_AMOUNT_WORDS_,w)) return AR_AMOUNT_WORDS_[w];
-  if(Object.prototype.hasOwnProperty.call(EN_AMOUNT_WORDS_,w)) return EN_AMOUNT_WORDS_[w];
-  return null;
-}
-
-function parseSpokenNumberPhrase_(phrase){
-  const parts=String(phrase||'').toLowerCase().trim().split(/\s+/).filter(Boolean);
-  if(!parts.length) return null;
-  let value=0,handled=false;
-  for(const part of parts){
-    const n=numberWordValue_(part);
-    if(n==null) return null;
-    value+=n; handled=true;
-  }
-  return handled ? value : null;
-}
-
-function normalizeSpokenAmounts_(text){
-  let s=String(text||'').replace(/\s+/g,' ').trim();
-  if(!s) return '';
-  s=s.replace(/[٠-٩]/g,d=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
-
-  const words=Object.keys({...AR_AMOUNT_WORDS_,...EN_AMOUNT_WORDS_})
-    .sort((a,b)=>b.length-a.length)
-    .map(x=>x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|');
-
-  // Handle mixed-language spoken ranges before single-amount normalization:
-  // "forty to fifty million", "من أربعين لخمسين مليون", "أربعين إلى خمسين مليون".
-  const rangeWords=new RegExp(
-    '(^|[^\\p{L}])('+words+')(?:\\s+('+words+'))?\\s*(?:إلى|الى|لـ|ل|من|to|through|حتى)\\s*('+words+')(?:\\s+('+words+'))?\\s*(million|مليون|ملايين|mn|m)(?=$|[^\\p{L}])','giu'
-  );
-  s=s.replace(rangeWords,(all,prefix,a1,a2,b1,b2,unit)=>{
-    const left=parseSpokenNumberPhrase_([a1,a2].filter(Boolean).join(' '));
-    const right=parseSpokenNumberPhrase_([b1,b2].filter(Boolean).join(' '));
-    return left!=null && right!=null ? prefix+left+' million - '+right+' million' : all;
-  });
-
-  s=s.replace(/(?:^|\s)من\s+(\d+(?:\.\d+)?)\s+million/giu,'$1 million');
-
-  // Single spoken amount with an explicit monetary unit.
-  const wordAmount=new RegExp('(^|[^\\p{L}])((?:'+words+')(?:\\s+(?:'+words+'))?)\\s*(million|مليون|ملايين|mn|m)(?=$|[^\\p{L}])','giu');
-  s=s.replace(wordAmount,(all,prefix,numWords,unit)=>{
-    const value=parseSpokenNumberPhrase_(numWords);
-    return value!=null ? prefix+String(value)+' million' : all;
-  });
-
-  // Deterministic numeric/Arabic range handling, including a leading "من":
-  // 40 مليون لـ 50 مليون / من 40 مليون إلى 50 مليون.
-  s=s.replace(/(?:من\s+)?(\d+(?:[.,]\d+)?)\s*(?:مليون|ملايين|million|mn|m)\s*(?:إلى|الى|لـ|ل|to|through|حتى|-)\s*(\d+(?:[.,]\d+)?)\s*(?:مليون|ملايين|million|mn|m)/giu,'$1 million - $2 million');
-  s=s.replace(/(?:من\s+)?(\d+(?:[.,]\d+)?)\s*(?:إلى|الى|لـ|ل|to|through|حتى)\s*(\d+(?:[.,]\d+)?)\s*(?:مليون|ملايين|million|mn|m)/giu,'$1 million - $2 million');
-
-  // Numeric money tokens.
-  s=s.replace(/\b(\d+(?:[.,]\d+)?)\s*(مليون|ملايين|million|mn|m)\b/giu,'$1 million');
-
-  // Numeric ranges with the unit on either side or only at the end.
-  s=s.replace(/(\d+(?:\.\d+)?)\s*(?:million)\s*(?:إلى|الى|لـ|ل|to|through|حتى|-)\s*(\d+(?:\.\d+)?)\s*(?:million)?/giu,'$1 million - $2 million');
-  s=s.replace(/(\d+(?:\.\d+)?)\s*(?:إلى|الى|لـ|ل|to|through|حتى|-)\s*(\d+(?:\.\d+)?)\s*(?:million|مليون|ملايين)(?=$|[^\p{L}])/giu,'$1 million - $2 million');
-  return s.replace(/\s+/g,' ').trim();
-}
-
-function chooseBestSpeechAlternative_(result){
-  const alts=[];
-  const len=Number(result?.length||0);
-  for(let i=0;i<len;i++){
-    const a=result[i];
-    const t=String(a?.transcript||'').trim();
-    if(!t) continue;
-    let score=Number(a?.confidence||0)*10;
-    if(/مليون|ملايين|million|mn\b|\bmn|ألف|thousand/i.test(t)) score+=5;
-    if(/budget|ميزاني|Groova|Mivida|Mountain|View|Standalone|Twin|Town|Villa|Apartment|Element|Facebook|Cold|Refell/i.test(t)) score+=2;
-    if(/[٠-٩0-9]/.test(t)) score+=1;
-    if(/[\u0600-\u06ff]/.test(t)) score+=1;
-    alts.push({t,score});
-  }
-  alts.sort((a,b)=>b.score-a.score);
-  return alts.length ? alts[0].t : '';
-}
-
 function createRecognition_(){
   const C=ctor();
   if(!C) throw new Error('Speech Recognition is not available. Use current Chrome or Edge.');
@@ -1226,14 +506,6 @@ function createRecognition_(){
   r.interimResults=true;
   r.maxAlternatives=3;
   r.lang='ar-EG';
-
-  // Chrome exposes contextual phrase biasing experimentally. It is feature-
-  // detected so unsupported iOS/browser builds simply ignore it.
-  try{
-    if('SpeechRecognitionPhrase' in window && 'phrases' in r){
-      r.phrases=SPEECH_CONTEXT_PHRASES_.map(p=>new SpeechRecognitionPhrase(p,8.0));
-    }
-  }catch(e){}
 
   r.onstart=()=>{
     clearRecognitionWatchdogs_();
@@ -1252,7 +524,7 @@ function createRecognition_(){
 
     status(currentMode==='answer'
       ? 'Listening for your answer... خد وقتك، وأنا مستنيك تخلص.'
-      : 'Listening... اتكلم براحتك. أنا مش هوقف الـstory بسبب أي سكتة. لما تخلص اضغط Finish & Save.');
+      : 'Listening... Speak naturally.');
   };
 
   r.onresult=e=>{
@@ -1260,15 +532,12 @@ function createRecognition_(){
 
     for(let i=e.resultIndex;i<e.results.length;i++){
       const result=e.results[i];
-      const text=chooseBestSpeechAlternative_(result);
+      const text=String(result?.[0]?.transcript||'').trim();
       if(!text) continue;
 
       if(result.isFinal){
-        const beforeFinal=turnFinal;
-        turnFinal=mergeSpeechText_(turnFinal,text);
-        newestFinal=mergeSpeechText_(newestFinal, text);
-        // A final result supersedes the current interim display; it should not
-        // be duplicated in the committed transcript.
+        turnFinal=(turnFinal+' '+text).replace(/\s+/g,' ').trim();
+        newestFinal=(newestFinal+' '+text).replace(/\s+/g,' ').trim();
         turnInterim='';
       }else{
         // Interim is display-only. It is never appended permanently.
@@ -1282,17 +551,22 @@ function createRecognition_(){
     lastSpeechAt=Date.now();
     clearTimeout(silenceTimer);
 
-    // Live correction is a separate, asynchronous DISPLAY-ONLY pipeline.
-    // It never controls the Story boundary, never asks CRM questions, and never
-    // blocks Speech Recognition.
-    if(currentMode==='call' && newestFinal){
-      queueLiveCorrection_(newestFinal);
+    // Live canonicalization is local/non-blocking.
+    if(currentMode==='call' && !phoneMode){
+      const raw=currentVoiceText_();
+      const corrected=localCorrectLive_(raw);
+      correctedLiveText=(corrected!==raw) ? corrected : '';
     }
+
     render();
 
     // Silence starts only AFTER actual recognition text exists.
     scheduleRealSilence_();
 
+    // Do not make a network call while the user is still talking.
+    if(newestFinal && currentMode==='call' && !phoneMode){
+      queueLiveCorrection_(newestFinal);
+    }
   };
 
   r.onspeechstart=()=>{
@@ -1307,7 +581,7 @@ function createRecognition_(){
   r.onspeechend=()=>{
     speechActive=false;
     if(shouldKeepListening && currentVoiceText_()){
-      if(currentMode!=='call' || CALL_STORY_AUTO_FINISH) scheduleRealSilence_();
+      scheduleRealSilence_();
     }
   };
 
@@ -1320,7 +594,7 @@ function createRecognition_(){
   r.onsoundend=()=>{
     speechActive=false;
     if(shouldKeepListening && currentVoiceText_()){
-      if(currentMode!=='call' || CALL_STORY_AUTO_FINISH) scheduleRealSilence_();
+      scheduleRealSilence_();
     }
   };
 
@@ -1359,24 +633,11 @@ function createRecognition_(){
   };
 
   r.onend=()=>{
-    // A browser recognition session can end while an interim phrase is still
-    // the best available text. Preserve it before restarting so the beginning
-    // of a Story/answer is not silently lost.
-    if(shouldKeepListening && !processing && turnInterim){
-      const carry=turnInterim;
-      turnFinal=mergeSpeechText_(turnFinal,carry);
-      turnInterim='';
-      if(currentMode==='call') queueLiveCorrection_(carry);
-      render();
-    }
-
     isListening=false;
 
     // onend is not the end of the user turn. Chromium can rotate the service.
     // Restart the same recognition turn and keep all collected text.
     if(shouldKeepListening && !processing){
-      $('startBtn').disabled=true;
-      $('stopBtn').disabled=false;
       scheduleRecognitionRestart_('Speech Recognition restarting...');
     }
   };
@@ -1398,11 +659,16 @@ function startListening_(newTurn){
   if(newTurn){
     turnFinal='';
     turnInterim='';
-      speechActive=false;
+    correctedLiveText='';
+    speechActive=false;
     heardSpeech=false;
     lastSpeechAt=0;
     lastAudibleAt=0;
     phoneAttempts=0;
+
+    if(currentMode==='call'){
+      liveCorrectionSeq++;
+    }
 
     render();
   }
@@ -1410,51 +676,39 @@ function startListening_(newTurn){
   shouldKeepListening=true;
   isListening=false;
 
-  $('modeTitle').textContent=currentMode==='answer' ? 'Listening for Answer' : 'Preparing microphone';
-  $('startBtn').disabled=true; $('stopBtn').disabled=true;
-  status(currentMode==='answer' ? 'Listening for your answer... خد وقتك، وأنا مستنيك تخلص.' : 'بجهّز التسجيل الأصلي... ابدأ الكلام فقط لما يظهر 🔴 Recording.');
-  const beginPreview=()=>{
-    if(currentMode==='call' && !audioRecordingReady){shouldKeepListening=false; $('startBtn').disabled=false; $('stopBtn').disabled=true; showError('The original microphone recording did not start. Nothing was saved.'); return;}
-    const C=ctor();
-    $('modeTitle').textContent=currentMode==='answer' ? 'Listening for Answer' : 'Listening'; $('stopBtn').disabled=false;
-    status(currentMode==='answer' ? 'Listening for your answer... خد وقتك، وأنا مستنيك تخلص.' : '🔴 Recording — اتكلم براحتك. أنا مش هوقف الـstory بسبب أي سكتة. لما تخلص اضغط Finish & Save.');
+  $('modeTitle').textContent=currentMode==='answer' ? 'Listening for Answer' : 'Listening';
+  $('startBtn').disabled=true;
+  $('stopBtn').disabled=false;
 
-    // iPhone/iPad Safari can reject SpeechRecognition when it is started after
-    // the async getUserMedia() step used by the authoritative recorder. The
-    // original audio is authoritative, so on Apple mobile we intentionally do
-    // NOT start the optional live preview during Story recording. This removes
-    // the source of the old `not-allowed` loop/error while preserving the full
-    // recording. SpeechRecognition remains available for CRM answers because
-    // those are started from an explicit user action.
-    if(currentMode==='call' && isAppleMobile_()){
-      recognition=null;
-      status('🔴 Recording — تسجيل القصة الأصلي شغال. المعاينة الصوتية المباشرة متوقفة على iPhone/iPad لتجنب مشاكل Safari؛ كمّل عادي واضغط Finish & Save لما تخلص.');
-      return;
-    }
+  status(currentMode==='answer'
+    ? 'Listening for your answer... خد وقتك، وأنا مستنيك تخلص.'
+    : 'Listening... Speak naturally.');
 
-    if(C){try{recognition=createRecognition_(); recognition.start(); armRecognitionStartWatchdog_();}catch(e){recognition=null; status('🔴 Recording — الـpreview مش متاح، لكن التسجيل الأصلي شغال. كمّل عادي.');}}
-    else if(currentMode==='call') status('🔴 Recording — الـpreview مش متاح، لكن التسجيل الأصلي شغال. كمّل عادي.');
-  };
-  if(currentMode==='call' && newTurn){
-    startAuthoritativeRecording_().then(beginPreview).catch(err=>{shouldKeepListening=false; isListening=false; stopAuthoritativeRecording_(); try{if(recognition)recognition.abort();}catch(e){} $('startBtn').disabled=false; $('stopBtn').disabled=true; showError(err.message||String(err)); status('');});
-  }else beginPreview();
-}
-
-function prefetchStandardQuestionTts_(){
-  const standard=[
-    QUESTION_INTRO_TEXT,
-    'تمام، قولّي رقم الموبايل.',
-    'تمام، الليد ده جالك منين؟',
-    'تمام، والميزانية في حدود كام؟',
-    'تمام، وعايز الاستلام إمتى؟'
-  ];
-  standard.forEach(function(t){ try{ prefetchQuestionTts_(t); }catch(e){} });
+  // SpeechRecognition is the only active microphone consumer.
+  try{
+    recognition=createRecognition_();
+    recognition.start();
+    armRecognitionStartWatchdog_();
+  }catch(e){
+    shouldKeepListening=false;
+    isListening=false;
+    clearRecognitionWatchdogs_();
+    $('startBtn').disabled=false;
+    $('stopBtn').disabled=true;
+    showError('Could not start Speech Recognition: '+(e.message||String(e)));
+    status('');
+  }
 }
 
 function startSession(){
   clearError();
 
-  // SpeechRecognition is preview-only; authoritative audio does not depend on it.
+  const C=ctor();
+
+  if(!C){
+    showError('Speech Recognition is not available in this browser. Use current Chrome or Edge.');
+    return;
+  }
 
   // IMPORTANT: start SpeechRecognition directly from the button click.
   // Do not await getUserMedia or any network operation first; keep the browser
@@ -1466,38 +720,13 @@ function startSession(){
   currentMode='call';
   questionText='';
   questionIntroPlayed=false;
-  clearLiveCorrection_();
-  liveCorrectionSession=makeSession_();
-  primeSpeechOutput_();
-  primeAudioOutput_();
-  prefetchStandardQuestionTts_();
 
-  // Every Start Voice begins a brand-new Story. Never carry the previous
-  // saved feedback into the next call UI or transcript.
-  conversation=[];
-  savedFeedbackText='';
-  savedNextActionText='';
-  savedNextActionDateTime='';
-  lastProcessedTranscriptHash='';
-  turnFinal='';
-  turnInterim='';
-
-  // Finish & Save must be available immediately after the user's Start click.
-  // Do not make the user wait for the browser's asynchronous onstart event; if
-  // the recognizer is slow to initialize, the user can still end the Story.
   $('startBtn').disabled=true;
-  $('stopBtn').disabled=false;
+  $('stopBtn').disabled=true;
 
-  $('modeTitle').textContent='Preparing microphone';
-  $('modeText').textContent='استنى لحد ما يظهر Listening. بعد كده اتكلم براحتك؛ التسجيل الأصلي بيتحفظ مؤقتًا، والـAI هيستخدمه كمصدر الحقيقة في الـStory النهائية.';
-  updateActiveLeadUi_();
-  status('بجهز الميكروفون... أول ما يظهر Listening ابدأ الكلام.');
-
-  // Reset all per-call async guards. A previous failed request must never block
-  // a brand-new Story.
-  window.__mgRequestBusy=false;
-  window.__mgStartBusy=true;
-  requestGeneration++;
+  $('modeTitle').textContent='Starting';
+  $('modeText').textContent='سامعك. اتكلم براحتك، وأنا هجمع القصة كلها قبل ما أحفظها.';
+  status('ببدأ التسجيل...');
 
   // Reset the startup-attempt counter for this manual Start.
   clearRecognitionWatchdogs_();
@@ -1524,9 +753,6 @@ function startSession(){
 
 function finishTurn_(reason){
   if(processing) return;
-  // Initial call story is intentionally submitted only by Finish & Save.
-  // Never let silence or a phone mention turn the story into a CRM question.
-  if(currentMode==='call' && reason!=='manual') return;
 
   processing=true;
   shouldKeepListening=false;
@@ -1534,21 +760,12 @@ function finishTurn_(reason){
   speechActive=false;
   clearTurnTimers_();
   clearRecognitionWatchdogs_();
-
-  // Capture a completed live correction BEFORE clearing its async state.
-  // Otherwise Finish & Save would erase the correction and always fall back
-  // to the raw Story even when Gemini had already corrected the full turn.
-  const correctedReadyAtFinish = currentMode==='call' &&
-    !!liveCorrectedText && !liveCorrectionInFlight &&
-    !liveCorrectionPending && liveCorrectionRawSent === turnFinal;
-  const correctedStoryAtFinish = correctedReadyAtFinish ? liveCorrectedText : '';
-
-  clearLiveCorrection_();
   stopMicPreflight_();
+  clearTimeout(liveCorrectionTimer);
+  liveCorrectionSeq++;
 
   try{ if(recognition) recognition.abort(); }catch(e){}
 
-  if(currentMode==='call') stopAuthoritativeRecording_();
   const t=currentVoiceText_();
 
   turnFinal='';
@@ -1558,10 +775,10 @@ function finishTurn_(reason){
   $('startBtn').disabled=true;
   $('stopBtn').disabled=true;
   status(reason==='manual'
-    ? (phoneMode ? 'خلصت الرقم. بتأكد منه...' : 'خلصت الـstory. بجهّز المكالمة للحفظ...')
-    : (phoneMode ? 'خلصت الرقم. بتأكد منه...' : 'بجهّز المكالمة للحفظ...'));
+    ? (phoneMode ? 'خلصت الرقم. بتأكد منه...' : 'خلصت التسجيل. بجهّز المكالمة للحفظ...')
+    : (phoneMode ? 'خلصت الرقم. بتأكد منه...' : 'خلصنا الكلام. بجهّز المكالمة للحفظ...'));
 
-  if(!t && currentMode!=='call' && !authoritativeAudioBlob && !audioRecorderChunks.length){
+  if(!t){
     processing=false;
     $('startBtn').disabled=false;
     status('مفيش كلام اتسجل.');
@@ -1594,31 +811,24 @@ function finishTurn_(reason){
   }
 
   if(currentMode==='answer'){
-    // Do not call Gemini just to rewrite every clarification answer. The final
-    // voiceProcess call already has the full QUESTION/ANSWER context and does
-    // the authoritative correction. This removes one network round-trip per
-    // question and keeps the conversation responsive.
-    const local=localClarificationAnswer_(questionText,t);
-    conversation.push('ANSWER: '+(local||t));
-    render();
-    processConversation();
+    status('براجع الإجابة بسرعة...');
+
+    correctAnswerContext_(t).then(corrected=>{
+      conversation.push('ANSWER: '+corrected);
+      render();
+      processConversation();
+    }).catch(()=>{
+      conversation.push('ANSWER: '+t);
+      render();
+      processConversation();
+    });
+
     return;
   }
 
-  // If the latest background correction is complete and corresponds to the
-  // entire finalized Story, send that corrected Story to CRM as the FEEDBACK.
-  // This means a correction such as "40 to 50" -> "40 million to 50 million"
-  // is not merely visual; it is also available to the deterministic fallback
-  // if final Gemini extraction is temporarily unavailable. If correction is
-  // still pending/in-flight, keep the raw Story and let final extraction handle it.
-  conversation.push('FEEDBACK: '+(correctedStoryAtFinish || t));
+  conversation.push('FEEDBACK: '+t);
   render();
-  stopAuthoritativeRecording_();
-  waitForRecorderBlob_().then(()=>processConversation()).catch(err=>{
-    processing=false; window.__mgRequestBusy=false; $('startBtn').disabled=false; $('stopBtn').disabled=true;
-    showError(err.message||String(err)); status('');
-  }).then(()=>{});
-  return;
+  processConversation();
 }
 
 function stopNow(){
@@ -1661,72 +871,23 @@ async function sendConversationChunk_(session,index,total,text){
   return jsonpRequest({
     api:'voiceChunk',
     session:session,
-    activeClientNumber:activeLead.number||'',
-    activeClientRow:String(activeLead.row||0),
     index:String(index),
     total:String(total),
     text:text
   });
 }
 
-
-function fireVoiceProcess_(session){
-  const cb='mgVoiceProcessCb_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8);
-  const script=document.createElement('script');
-  const q=new URLSearchParams({api:'voiceProcess',session:session,activeClientNumber:activeLead.number||'',activeClientRow:String(activeLead.row||0),callback:cb});
-  let finished=false;
-
-  const cleanup=()=>{
-    if(finished) return;
-    finished=true;
-    try{script.remove();}catch(e){}
-    try{delete window[cb];}catch(e){window[cb]=undefined;}
-  };
-
-  // The callback is deliberately ignored for UI state. The lightweight
-  // voiceStatus poll is the single source of truth, so a fast server response
-  // cannot race the poll and handle the same result twice.
-  window[cb]=()=>{};
-
-  script.onerror=()=>{
-    // The server-side request can still be running; status polling remains the
-    // source of truth, so a script transport error is intentionally ignored.
-    cleanup();
-  };
-
-  script.src=API+'?'+q.toString();
-  document.head.appendChild(script);
-}
-
-async function sendAuthoritativeAudio_(session,base64,mimeType){
-  // Apps Script POST is intentionally fire-and-poll: GitHub Pages cannot read
-  // the cross-origin response reliably, but the request itself reaches doPost.
-  const durationMs=Math.max(0,(audioRecordingStoppedAt||Date.now())-(audioRecordingStartedAt||Date.now()));
-  const payload=JSON.stringify({api:'voiceAudio',session:session,activeClientNumber:activeLead.number||'',activeClientRow:activeLead.row||0,mimeType:String(mimeType||'audio/mp4'),base64:base64,durationMs:durationMs});
-  await fetch(API,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:payload});
-}
-
 async function processConversation(){
-  if(!conversation.length && !authoritativeAudioBlob && !audioRecorderChunks.length){
-    processing=false;
-    $('startBtn').disabled=false;
-    $('stopBtn').disabled=true;
-    status('مفيش قصة كاملة جاهزة للحفظ.');
-    return;
-  }
-  if(window.__mgRequestBusy){
-    status('في عملية حفظ شغالة بالفعل. ثواني...');
-    return;
-  }
+  if(!conversation.length) return;
+  if(window.__mgRequestBusy) return;
 
   window.__mgRequestBusy=true;
   $('startBtn').disabled=true;
   $('stopBtn').disabled=true;
-  clearError();
 
   const transcript=conversation.join('\n').trim();
 
-  if(!transcript && !authoritativeAudioBlob){
+  if(!transcript){
     window.__mgRequestBusy=false;
     processing=false;
     $('startBtn').disabled=false;
@@ -1735,80 +896,17 @@ async function processConversation(){
     return;
   }
 
-  const transcriptHash=authoritativeAudioBlob ? ('AUDIO:'+authoritativeAudioBlob.size+':'+audioRecordingStartedAt) : stableHash_(transcript);
-  if(lastProcessedTranscriptHash===transcriptHash){
-    window.__mgRequestBusy=false;
-    processing=false;
-    $('startBtn').disabled=false;
-    $('stopBtn').disabled=true;
-    status('البيانات اتعالجت بالفعل.');
-    return;
-  }
-  // Do not mark the turn as processed until the server returns a terminal
-  // result. A transient upload/Gemini/polling failure must leave the captured
-  // audio retryable; otherwise the user could be forced to repeat the Story.
-  // The hash is only committed immediately before handleResult(), after all
-  // retryable paths have been cleared.
-
-  status(authoritativeAudioBlob ? 'خلصنا الكلام. برفع التسجيل الأصلي للـAI عشان يثبت الـStory بدقة...' : 'خلصنا الكلام. بثبّت البيانات بسرعة...');
+  status('خلصنا الكلام. براجع المكالمة وبجهّز بيانات الليد...');
 
   const session=makeSession_();
-
-  if(authoritativeAudioBlob){
-    try{
-      const dataUrl=await dataUrlFromBlob_(authoritativeAudioBlob);
-      const base64=String(dataUrl).split(',')[1]||'';
-      if(!base64) throw new Error('The original audio recording could not be prepared.');
-      if(base64.length>28000000) throw new Error('The recording is too large. Finish shorter calls or use the manual text fallback.');
-      const recordedDurationMs=Math.max(0,(audioRecordingStoppedAt||Date.now())-(audioRecordingStartedAt||Date.now()));
-      if(recordedDurationMs<700) throw new Error('The original recording is too short. Nothing was saved.');
-
-      await sendAuthoritativeAudio_(session,base64,authoritativeAudioBlob.type||audioRecorderMimeType||'audio/mp4');
-      status('التسجيل الأصلي وصل. Gemini بيحوّل القصة لنص وبيصلّح الـself-corrections...');
-      let result=null;
-      for(let attempt=0;attempt<CRM_POLL_ATTEMPTS;attempt++){
-        try{ result=await jsonpRequest({api:'voiceStatus',session:session},3000); }
-        catch(e){ result={retry:true,processing:true,message:e.message||String(e)}; }
-        if(result && !result.retry) break;
-        status(attempt<3 ? 'ثواني... بيثبت الـStory من التسجيل الأصلي.' : 'لسه بيحوّل التسجيل ويحفظ البيانات...');
-        await new Promise(resolve=>setTimeout(resolve,CRM_POLL_DELAY_MS));
-      }
-      if(!result || result.retry) throw new Error('الحفظ لسه شغال في الخلفية. ما تعيدش المكالمة؛ افتح الـCRM بعد دقيقة للتأكد من النتيجة.');
-      if(result && result.authoritativeTranscript){
-        conversation=['FEEDBACK: '+String(result.authoritativeTranscript).trim()];
-        savedFeedbackText='';
-  savedNextActionText='';
-  savedNextActionDateTime='';
-        render();
-      }
-      authoritativeAudioBlob=null;
-      audioRecorderChunks=[];
-      audioRecorderMimeType='';
-      lastProcessedTranscriptHash=transcriptHash;
-      handleResult(result);
-      return;
-    }catch(e){
-      // Do not silently save an inferior browser transcript. The user can see
-      // the exact failure and retry the same call, preserving the audio-first contract.
-      window.__mgRequestBusy=false;
-      processing=false;
-      $('startBtn').disabled=false;
-      $('stopBtn').disabled=true;
-      showError(e.message||String(e));
-      status('التسجيل الأصلي لم يتمكن من الوصول للـAI. لم أحفظ Story غير موثوقة.');
-      return;
-    }
-  }
-
-  const transcriptForFallback=conversation.join('\n').trim();
   const chunks=[];
 
-  for(let i=0;i<transcriptForFallback.length;i+=CHUNK_SIZE){
-    chunks.push(transcriptForFallback.slice(i,i+CHUNK_SIZE));
+  for(let i=0;i<transcript.length;i+=CHUNK_SIZE){
+    chunks.push(transcript.slice(i,i+CHUNK_SIZE));
   }
 
   try{
-    // Upload chunks concurrently.
+    // Upload chunks concurrently instead of one-by-one.
     for(let start=0; start<chunks.length; start+=CHUNK_CONCURRENCY){
       const batch=[];
       for(let i=start;i<Math.min(start+CHUNK_CONCURRENCY,chunks.length);i++){
@@ -1817,40 +915,28 @@ async function processConversation(){
       await Promise.all(batch);
     }
 
-    status('الكلام وصل. براجع البيانات...');
+    status('تمام، الكلام وصل. ببدأ تحليل الـAI...');
 
-    // IMPORTANT: Do not wait on voiceProcess itself. Apps Script may keep the
-    // server request open while Gemini/Sheets finish. Waiting on that same
-    // request from the browser made the old UI look stuck for minutes.
-    // Fire voiceProcess once, then poll a lightweight voiceStatus endpoint
-    // that only reads CacheService.
-    fireVoiceProcess_(session);
-
+    // The server may need time for Gemini + CRM writes. Do not make the user
+    // record again if the first response is slow. Retry the SAME session.
     let result=null;
-    for(let attempt=0; attempt<CRM_POLL_ATTEMPTS; attempt++){
-      try{
-        result=await jsonpRequest(
-          {api:'voiceStatus',session:session},
-          3000
-        );
-      }catch(e){
-        result={retry:true,processing:true,message:e.message||String(e)};
+    const maxProcessAttempts=4;
+
+    for(let attempt=0; attempt<maxProcessAttempts; attempt++){
+      status(attempt===0
+        ? 'الـAI بيحلل المكالمة وبيجهّز بيانات الليد...'
+        : 'لسه شغال على نفس التسجيل... مستني النتيجة بدون إعادة التسجيل.');
+
+      result=await jsonpRequest({api:'voiceProcess',session:session},90000);
+
+      if(result && result.retry){
+        await new Promise(resolve=>setTimeout(resolve,800));
+        continue;
       }
 
-      if(result && !result.retry) break;
-
-      status(attempt===0
-        ? 'ثواني... بكمّل الحفظ في الخلفية.'
-        : 'لسه بيثبّت البيانات...');
-
-      await new Promise(resolve=>setTimeout(resolve,CRM_POLL_DELAY_MS));
+      break;
     }
 
-    if(!result || result.retry){
-      throw new Error('الحفظ لسه شغال في الخلفية. ما تعيدش المكالمة ولا تضغط Finish مرة تانية؛ افتح الـCRM بعد دقيقة للتأكد من النتيجة.');
-    }
-
-    lastProcessedTranscriptHash=transcriptHash;
     handleResult(result);
   }catch(e){
     window.__mgRequestBusy=false;
@@ -1869,23 +955,27 @@ function isPhoneQuestion_(text){
 
 function normalizeSpokenDigits_(text){
   let s=String(text||'').toLowerCase().trim();
+
   const words={
     zero:'0',oh:'0',o:'0',one:'1',two:'2',three:'3',four:'4',five:'5',
     six:'6',seven:'7',eight:'8',nine:'9',
-    'صفر':'0','واحد':'1','واحدة':'1','اتنين':'2','اثنين':'2','اتنان':'2',
-    'تلاتة':'3','ثلاثة':'3','اربعة':'4','أربعة':'4','خمسة':'5',
-    'ستة':'6','سته':'6','ستّه':'6','سبعة':'7','سبعه':'7',
-    'تمانية':'8','ثمانية':'8','تسعة':'9','تسعه':'9'
+    'واحد':'1','واحدة':'1','اتنين':'2','اثنين':'2','تلاتة':'3','ثلاثة':'3',
+    'اربعة':'4','أربعة':'4','خمسة':'5','ستة':'6','سته':'6',
+    'سبعة':'7','سبعه':'7','تمانية':'8','ثمانية':'8','تسعة':'9','تسعه':'9'
   };
-  Object.keys(words).sort((a,b)=>b.length-a.length).forEach(w=>{
-    s=s.replace(new RegExp('(^|[^a-zA-Z\\u0600-\\u06FF])'+w+'(?=$|[^a-zA-Z\\u0600-\\u06FF])','gi'),'$1'+words[w]);
+
+  Object.keys(words).forEach(w=>{
+    s=s.replace(
+      new RegExp('(^|[^a-zA-Z\\\\u0600-\\\\u06FF])'+w+
+        '(?=$|[^a-zA-Z\\\\u0600-\\\\u06FF])','gi'),
+      '$1'+words[w]
+    );
   });
+
   s=s.replace(/[٠-٩]/g,d=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
-  const digits=s.replace(/[^0-9]/g,'');
-  if(/^1[0125][0-9]{8}$/.test(digits)) return '0'+digits;
-  if(/^20(1[0125][0-9]{8})$/.test(digits)) return '0'+RegExp.$1;
-  return digits;
+  return s.replace(/[^0-9]/g,'');
 }
+
 function validEgyptianMobileDigits_(d){
   if(!d) return false;
   if(d.startsWith('20') && d.length===12) d='0'+d.slice(2);
@@ -1969,6 +1059,17 @@ const LIVE_ALIASES_=[
   [/هايد\s*بارك|هايدبارك/gi,'Hyde Park']
 ];
 
+function localCorrectLive_(text){
+  let s=String(text||'').trim();
+  LIVE_ALIASES_.forEach(function(pair){ s=s.replace(pair[0],pair[1]); });
+  return s;
+}
+
+function queueLiveCorrection_(segment){
+  if(currentMode!=='call' || phoneMode) return;
+  correctedLiveText=localCorrectLive_(currentVoiceText_());
+  render();
+}
 
 function arabicQuestion(data){
   // For new leads, never let Gemini invent the wording of the missing-field prompt.
@@ -1991,7 +1092,8 @@ function arabicQuestion(data){
 
   if(data.question) return data.question;
   if(data.type==='PHONE_REQUIRED') return 'تمام، قولّي رقم الموبايل رقم رقم، وخد وقتك وأنا مستنيك تخلص.';
-  if(data.type==='NEW_CLIENT_MISSING_DATA') return 'تمام، قولّي اسم العميل.';
+  if(data.type==='PHONE_CONFIRMATION_REQUIRED') return data.question||'أنا فهمت رقم الموبايل. الرقم ده صح؟';
+  if(data.type==='NEW_CLIENT_MISSING_DATA') return 'تمام، ناقصني شوية بيانات بسيطة. هسألك عليهم واحدة واحدة.';
   if(data.type==='SOURCE_REQUIRED') return 'تمام، الليد ده جالك منين؟ Element، Direct، Adel، FB، Cold Call، ولا Refell؟';
   if(data.type==='CLIENT_NOT_FOUND') return 'مش قادر أحدد الليد. قولّي اسم العميل أو آخر أربع أرقام من الموبايل.';
   if(data.type==='MULTIPLE_CLIENTS') return data.message||'لقيت أكتر من تطابق. قولّي اسم العميل أو آخر أربع أرقام من الموبايل.';
@@ -2010,31 +1112,20 @@ function handleResult(data){
 
   if(data.success){
     $('question').classList.add('hidden');
-    $('interruptAnswerBtn').classList.add('hidden');
-    disableManualAnswer_();
     questionText='';
     currentMode='call';
     phoneMode=false;
 
     $('modeTitle').textContent='Saved';
-    $('modeText').textContent=data.aiFallback
-      ? 'تم حفظ المكالمة بالطريقة الآمنة. Gemini غير متاح مؤقتًا، ونقدر نكمل المكالمة التالية.'
-      : 'تم حفظ وتصحيح قصة المكالمة. جاهز للمكالمة اللي بعدها.';
+    $('modeText').textContent='تم حفظ وتصحيح قصة المكالمة. جاهز للمكالمة اللي بعدها.';
 
-    // For an existing lead, Story is cumulative: a later voice note can
-    // continue the same Story (for example, adding a missed Next Action).
-    if(data.row) setActiveLead_(data.clientName||'', data.clientNumber||'', data.row);
-    savedFeedbackText=data.story ? String(data.story) : (data.feedback ? String(data.feedback) : '');
-    savedNextActionText=data.nextAction ? String(data.nextAction) : '';
-    savedNextActionDateTime=data.nextActionDateTime ? String(data.nextActionDateTime) : '';
-    conversation=[];
+    conversation=data.feedback
+      ? ['CORRECTED FEEDBACK: '+data.feedback]
+      : [];
+
     render();
-    status(data.aiFallback
-      ? 'تمام، المكالمة اتحفظت. Gemini كان غير متاح مؤقتًا، فستخدمت استخراجًا آمنًا بدون ما نعطل الـCRM.'
-      : 'تمام، المكالمة اتحفظت. جاهز للمكالمة اللي بعدها.');
-    speak(data.aiFallback
-      ? 'تمام، المكالمة اتحفظت. نقدر نكمل.'
-      : (data.message||'تم حفظ المكالمة بنجاح.'),false);
+    status('تمام، المكالمة اتحفظت. جاهز للمكالمة اللي بعدها.');
+    speak(data.message||'تم حفظ المكالمة بنجاح.',false);
 
     $('startBtn').disabled=false;
     $('stopBtn').disabled=true;
@@ -2045,8 +1136,8 @@ function handleResult(data){
 
   const q=arabicQuestion(data);
   if(q){
-    status('تمام، نكمّل بالمعلومة الناقصة... بشغّل السؤال صوتيًا.');
-    ask(q,data);
+    status('تمام، نكمّل بالمعلومة الناقصة...');
+    ask(q);
     return;
   }
 
@@ -2064,102 +1155,55 @@ function speakQuestionIntroThen_(questionToSpeak){
   newLeadIntroPending=false;
   questionIntroPlayed=true;
 
-  // Spoken-only transition: never enter Story/QUESTION/ANSWER/CRM state.
-  // Both clips were prefetched at Start Voice, so this transition should be
-  // effectively immediate instead of adding a Gemini round-trip here.
-  prefetchQuestionTts_(QUESTION_INTRO_TEXT);
-  prefetchQuestionTts_(questionToSpeak);
-  speak(QUESTION_INTRO_TEXT,false).then(()=>{
-    if(processing || speechRunId<=0) return;
-    speak(questionToSpeak,true);
-  }).catch(()=>{
-    if(!processing) speak(questionToSpeak,true);
-  });
+  const combined=
+    'بص، ناقصني كام معلومة صغيرة عشان أكمّل الليد. هسألك عليهم واحدة واحدة، '+
+    'وإنت رد عليا براحتك، ومش هقاطعك. '+questionToSpeak;
+
+  speak(combined,true);
 }
 
-
-function interruptAndAnswer_(){
-  if(processing || currentMode!=='answer' || manualIdentityMode) return;
-  stopCurrentSpeechOutput_();
-  stopQuestionInterruptMonitor_();
-  shouldKeepListening=true;
-  status('تمام — اتفضل جاوب.');
-  setTimeout(()=>{if(voiceEnabled&&!processing) startListening_(true);},50);
-}
-
-function ask(text,data){
+function ask(text){
   questionText=text||'محتاج معلومة ناقصة.';
-  const missing=Array.isArray(data&&data.missingFields)?data.missingFields.map(String):[];
-  const isNewLeadPhone=missing.includes('Client Number');
-  const isExistingLookup=data?.type==='CLIENT_NOT_FOUND' || data?.type==='MULTIPLE_CLIENTS' || data?.type==='PHONE_REQUIRED';
-  phoneMode=false; // Phone is never collected by voice anymore.
+  phoneMode=isPhoneQuestion_(questionText);
   phoneAttempts=0;
 
   const qLine='QUESTION: '+questionText;
-  if(conversation[conversation.length-1]!==qLine) conversation.push(qLine);
+  if(conversation[conversation.length-1]!==qLine){
+    conversation.push(qLine);
+  }
 
-  $('questionText').textContent=isNewLeadPhone
-    ? 'لـ New Lead: اكتب رقم الموبايل يدويًا.'
-    : isExistingLookup
-      ? questionText
-      : questionText;
+  $('questionText').textContent=phoneMode
+    ? 'قول رقم الموبايل رقم رقم. خد وقتك، وأنا مستنيك تخلص.'
+    : questionText;
 
   $('question').classList.remove('hidden');
-  currentMode='answer';
-  $('modeTitle').textContent='CRM Question';
-  $('modeText').textContent=isNewLeadPhone
-    ? 'رقم الموبايل New Lead يدوي فقط — مفيش voice phone.'
-    : isExistingLookup
-      ? 'لو ده عميل موجود، تقدر تدخل آخر 4 أرقام يدويًا. أو جاوب صوتيًا لو محتاج.'
-      : 'تمام، اسمع السؤال. لو عايز تقاطع السؤال، ابدأ كلامك فورًا.';
 
-  if(isNewLeadPhone){
-    $('interruptAnswerBtn').classList.add('hidden');
-    enableManualAnswer_('new-phone','رقم موبايل العميل','New Lead: اكتب الرقم كاملًا — 11 رقم. مش هيطلب تأكيد تاني.','01xxxxxxxxx');
-  }else if(isExistingLookup){
-    $('interruptAnswerBtn').classList.remove('hidden');
-    enableManualAnswer_('last4','آخر 4 أرقام من الموبايل','Existing Lead: اكتب آخر 4 أرقام فقط — مش هيطلب تأكيد صوتي.','1234');
-  }else{
-    disableManualAnswer_();
-    $('interruptAnswerBtn').classList.remove('hidden');
-  }
+  currentMode='answer';
+
+  $('modeTitle').textContent='CRM Question';
+  $('modeText').textContent=phoneMode
+    ? 'هسمع الرقم رقم رقم. خد وقتك، ومش هقاطعك. ولو الرقم مش واضح هطلبه تاني.'
+    : 'تمام، اسمع السؤال ورد عليّ بطريقتك.';
 
   render();
 
-  const spoken=isNewLeadPhone
-    ? 'رقم الموبايل للـ New Lead هيتكتب يدويًا. لما تخلص، دوس Continue.'
+  const spoken=phoneMode
+    ? 'قول رقم الموبايل رقم رقم، خد وقتك، وأنا مستنيك تخلص.'
     : questionText;
 
-  prefetchQuestionTts_(spoken);
-  status('السؤال جاهز... تقدر تقاطعه بصوتك في أي لحظة.');
   speakQuestionIntroThen_(spoken);
 }
 
 function reset(){
-  stopQuestionInterruptMonitor_();
-  disableManualAnswer_();
   shouldKeepListening=false;
   processing=false;
   window.__mgRequestBusy=false;
   window.__mgStartBusy=false;
   clearTurnTimers_();
-
-  // Reset is a hard cancellation: release the authoritative recorder, its
-  // stream, buffered chunks and pending blob so a new call can never inherit
-  // audio from the previous call.
-  try{stopAuthoritativeRecording_();}catch(e){}
-  authoritativeAudioBlob=null;
-  audioRecorderChunks=[];
-  audioRecorderMimeType='';
-  audioRecorder=null;
-  audioRecordingReady=false;
-  audioRecordingReadyPromise=null;
-  audioRecordingStartedAt=0;
-  audioRecordingStoppedAt=0;
+  clearTimeout(liveCorrectionTimer);
 
   try{if(recognition) recognition.abort();}catch(e){}
   try{speechSynthesis.cancel();}catch(e){}
-  stopCurrentSpeechOutput_();
   stopVAD_();
 
   recognition=null;
@@ -2175,37 +1219,26 @@ function reset(){
   lastSpeechAt=0;
 
   conversation=[];
-  savedFeedbackText='';
-  savedNextActionText='';
-  savedNextActionDateTime='';
-  setActiveLead_('','');
   questionText='';
   currentMode='call';
   phoneMode=false;
   phoneAttempts=0;
   questionIntroPlayed=false;
   newLeadIntroPending=false;
-  clearLiveCorrection_();
 
   $('question').classList.add('hidden');
-  $('interruptAnswerBtn').classList.add('hidden');
   $('startBtn').disabled=false;
   $('stopBtn').disabled=true;
 
   $('modeTitle').textContent='Ready';
-  $('modeText').textContent='Tap Start Voice once. Speak naturally. The Story does NOT auto-finish and does NOT ask CRM questions while you speak. When you are completely finished, press Finish & Save.';
+  $('modeText').textContent='Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically and keeps your full paragraph.';
 
   render();
   status('Ready.');
   clearError();
 }
 
-render();
-$('manualSubmitBtn').onclick=submitManualAnswer_;
-$('interruptAnswerBtn').onclick=interruptAndAnswer_;
-$('manualInput').addEventListener('keydown',e=>{if(e.key==='Enter') submitManualAnswer_();});
 $('startBtn').onclick=startSession;
 $('stopBtn').onclick=stopNow;
 $('resetBtn').onclick=reset;
-$('changeLeadBtn').onclick=clearActiveLead_;
 </script>
