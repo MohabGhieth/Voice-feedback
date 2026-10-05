@@ -872,6 +872,7 @@ function startSession(){
   // saved feedback into the next call UI or transcript.
   conversation=[];
   savedFeedbackText='';
+  lastProcessedTranscriptHash='';
   turnFinal='';
   turnInterim='';
 
@@ -1045,6 +1046,34 @@ async function sendConversationChunk_(session,index,total,text){
 }
 
 
+function fireVoiceProcess_(session){
+  const cb='mgVoiceProcessCb_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8);
+  const script=document.createElement('script');
+  const q=new URLSearchParams({api:'voiceProcess',session:session,callback:cb});
+  let finished=false;
+
+  const cleanup=()=>{
+    if(finished) return;
+    finished=true;
+    try{script.remove();}catch(e){}
+    try{delete window[cb];}catch(e){window[cb]=undefined;}
+  };
+
+  // The callback is deliberately ignored for UI state. The lightweight
+  // voiceStatus poll is the single source of truth, so a fast server response
+  // cannot race the poll and handle the same result twice.
+  window[cb]=()=>{};
+
+  script.onerror=()=>{
+    // The server-side request can still be running; status polling remains the
+    // source of truth, so a script transport error is intentionally ignored.
+    cleanup();
+  };
+
+  script.src=API+'?'+q.toString();
+  document.head.appendChild(script);
+}
+
 async function processConversation(){
   if(!conversation.length){
     processing=false;
@@ -1106,15 +1135,19 @@ async function processConversation(){
 
     status('الكلام وصل. براجع البيانات...');
 
-    // The Apps Script request can continue server-side even if the browser
-    // times out. The backend caches the final result by session, so polling
-    // the SAME session is safe and cannot create a duplicate lead/call.
+    // IMPORTANT: Do not wait on voiceProcess itself. Apps Script may keep the
+    // server request open while Gemini/Sheets finish. Waiting on that same
+    // request from the browser made the old UI look stuck for minutes.
+    // Fire voiceProcess once, then poll a lightweight voiceStatus endpoint
+    // that only reads CacheService.
+    fireVoiceProcess_(session);
+
     let result=null;
     for(let attempt=0; attempt<CRM_POLL_ATTEMPTS; attempt++){
       try{
         result=await jsonpRequest(
-          {api:'voiceProcess',session:session},
-          CRM_PROCESS_TIMEOUT_MS
+          {api:'voiceStatus',session:session},
+          3000
         );
       }catch(e){
         result={retry:true,processing:true,message:e.message||String(e)};
@@ -1122,16 +1155,15 @@ async function processConversation(){
 
       if(result && !result.retry) break;
 
-      if(attempt < CRM_POLL_ATTEMPTS-1){
-        status(attempt===0
-          ? 'ثواني... بكمّل الحفظ في الخلفية.'
-          : 'لسه بيثبّت البيانات...');
-        await new Promise(resolve=>setTimeout(resolve,CRM_POLL_DELAY_MS));
-      }
+      status(attempt===0
+        ? 'ثواني... بكمّل الحفظ في الخلفية.'
+        : 'لسه بيثبّت البيانات...');
+
+      await new Promise(resolve=>setTimeout(resolve,CRM_POLL_DELAY_MS));
     }
 
     if(!result || result.retry){
-      throw new Error('CRM is still processing the call. Please wait a few seconds and try again.');
+      throw new Error('CRM is taking longer than expected. The save is still running in the background. Wait a little, then check the CRM result.');
     }
 
     handleResult(result);
