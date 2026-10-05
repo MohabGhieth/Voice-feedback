@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>MG RESALE — Voice CRM V18 Audio First</title>
+<title>MG RESALE — Voice CRM V19.2 Deep Hardened</title>
 <style>
 :root{--bg:#07131a;--card:#0d2029;--text:#f4fbfd;--muted:#9eb5bc;--accent:#6ee7d8;--danger:#ff8f8f;--border:rgba(255,255,255,.1)}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at top,#12303a 0%,var(--bg) 55%,#040b10 100%);color:var(--text);font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px 14px}.app{width:100%;max-width:680px}.brand{text-align:center;margin-bottom:16px}.brand h1{margin:0;font-size:30px}.brand p{margin:6px 0;color:var(--muted)}.card{background:rgba(13,32,41,.96);border:1px solid var(--border);border-radius:24px;padding:22px}.mode,.question{border-radius:15px;padding:14px 15px;background:rgba(255,255,255,.04);border:1px solid var(--border);margin-bottom:14px;line-height:1.5}.mode b{color:var(--accent)}.question{background:rgba(110,231,216,.10);border-color:rgba(110,231,216,.26)}.question small{display:block;color:var(--muted);margin-bottom:7px}.question strong{display:block;font-size:20px;line-height:1.45}.transcript{min-height:180px;white-space:pre-wrap;direction:rtl;unicode-bidi:plaintext;background:#07161d;border:1px solid var(--border);border-radius:16px;padding:14px;line-height:1.55;overflow-wrap:anywhere;margin-bottom:14px}.buttons{display:grid;grid-template-columns:1fr 1fr;gap:10px}button{border:0;border-radius:14px;padding:15px 12px;font-size:16px;font-weight:800;cursor:pointer}.start{background:var(--accent);color:#06211f}.stop{background:#6f2424;color:#fff}.reset{background:#17333d;color:#fff}button:disabled{opacity:.55;cursor:not-allowed}.status{min-height:24px;margin-top:13px;color:var(--muted);font-size:14px}.error{margin-top:12px;padding:12px 13px;border-radius:12px;color:#ffd7d7;background:rgba(140,31,31,.22);border:1px solid rgba(255,143,143,.28)}.hidden{display:none!important}.tip{color:var(--muted);font-size:12px;line-height:1.55;margin-top:13px}@media(max-width:500px){body{padding:12px 10px;align-items:flex-start}.card{padding:16px;margin-top:20px}.brand h1{font-size:27px}.buttons{grid-template-columns:1fr}}
@@ -11,7 +11,7 @@
 </head>
 <body>
 <main class="app">
-<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — V18 Audio First / Story First / Smart Correction</p></div>
+<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — V19.2 Deep Hardened / Story First / Smart Correction</p></div>
 <section class="card">
 <div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. The Story never auto-finishes. Press Finish & Save only when you are completely done.</span></div>
 <div id="question" class="question hidden"><small>CRM asks:</small><strong id="questionText"></strong></div>
@@ -339,29 +339,42 @@ async function drainLiveCorrection_(){
   }
 }
 
-function pickRecorderMimeType_(){
+function pickRecorderMimeTypes_(){
   const candidates=['audio/mp4','audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/ogg'];
-  if(!window.MediaRecorder) return '';
+  if(!window.MediaRecorder) return [];
+  const supported=[];
   for(const type of candidates){
-    try{ if(MediaRecorder.isTypeSupported(type)) return type; }catch(e){}
+    try{ if(MediaRecorder.isTypeSupported(type)) supported.push(type); }catch(e){}
   }
-  return '';
+  return supported;
 }
 
 async function startAuthoritativeRecording_(){
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('This browser cannot access the microphone.');
   if(!window.MediaRecorder) throw new Error('This browser does not support secure audio recording.');
   stopAuthoritativeRecording_();
-  const mime=pickRecorderMimeType_();
+  const mimeCandidates=pickRecorderMimeTypes_();
   const constraints={audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false};
   audioRecordingReady=false;
   audioRecordingReadyPromise=(async()=>{
     audioRecorderStream=await navigator.mediaDevices.getUserMedia(constraints);
-    const track=audioRecorderStream.getAudioTracks()[0];
-    audioRecorderMimeType=mime || track?.getSettings?.().mimeType || 'audio/mp4';
     audioRecorderChunks=[]; authoritativeAudioBlob=null; authoritativeTranscript=''; audioRecordingStopped=false; audioRecordingStoppedAt=0;
-    const options=audioRecorderMimeType ? {mimeType:audioRecorderMimeType,audioBitsPerSecond:64000} : {audioBitsPerSecond:64000};
-    audioRecorder=new MediaRecorder(audioRecorderStream,options);
+
+    let recorder=null;
+    let lastError=null;
+    const optionsList=mimeCandidates.map(type=>({mimeType:type,audioBitsPerSecond:64000}));
+    optionsList.push({audioBitsPerSecond:64000});
+    for(const options of optionsList){
+      try{ recorder=new MediaRecorder(audioRecorderStream,options); break; }catch(e){ lastError=e; }
+    }
+    if(!recorder){
+      try{ audioRecorderStream.getTracks().forEach(t=>t.stop()); }catch(e){}
+      audioRecorderStream=null;
+      throw new Error('The browser could not initialize a supported audio recorder: '+(lastError?.message||'unknown error'));
+    }
+
+    audioRecorder=recorder;
+    audioRecorderMimeType=String(audioRecorder.mimeType||mimeCandidates[0]||'audio/mp4');
     audioRecorder.ondataavailable=e=>{if(e.data&&e.data.size) audioRecorderChunks.push(e.data);};
     audioRecorder.onerror=e=>{showError('Audio recording error: '+(e.error?.message||e.error?.name||'unknown'));};
     audioRecorder.start(250); audioRecordingStartedAt=Date.now(); audioRecordingReady=true;
@@ -1211,6 +1224,7 @@ function startListening_(newTurn){
   status(currentMode==='answer' ? 'Listening for your answer... خد وقتك، وأنا مستنيك تخلص.' : 'بجهّز التسجيل الأصلي... ابدأ الكلام فقط لما يظهر 🔴 Recording.');
   const beginPreview=()=>{
     if(currentMode==='call' && !audioRecordingReady){shouldKeepListening=false; $('startBtn').disabled=false; $('stopBtn').disabled=true; showError('The original microphone recording did not start. Nothing was saved.'); return;}
+    const C=ctor();
     $('modeTitle').textContent=currentMode==='answer' ? 'Listening for Answer' : 'Listening'; $('stopBtn').disabled=false;
     status(currentMode==='answer' ? 'Listening for your answer... خد وقتك، وأنا مستنيك تخلص.' : '🔴 Recording — اتكلم براحتك. أنا مش هوقف الـstory بسبب أي سكتة. لما تخلص اضغط Finish & Save.');
     if(C){try{recognition=createRecognition_(); recognition.start(); armRecognitionStartWatchdog_();}catch(e){recognition=null; status('🔴 Recording — الـpreview مش متاح، لكن التسجيل الأصلي شغال. كمّل عادي.');}}
@@ -1224,7 +1238,6 @@ function startListening_(newTurn){
 function startSession(){
   clearError();
 
-  const C=ctor();
   // SpeechRecognition is preview-only; authoritative audio does not depend on it.
 
   // IMPORTANT: start SpeechRecognition directly from the button click.
@@ -1864,6 +1877,19 @@ function reset(){
   window.__mgRequestBusy=false;
   window.__mgStartBusy=false;
   clearTurnTimers_();
+
+  // Reset is a hard cancellation: release the authoritative recorder, its
+  // stream, buffered chunks and pending blob so a new call can never inherit
+  // audio from the previous call.
+  try{stopAuthoritativeRecording_();}catch(e){}
+  authoritativeAudioBlob=null;
+  audioRecorderChunks=[];
+  audioRecorderMimeType='';
+  audioRecorder=null;
+  audioRecordingReady=false;
+  audioRecordingReadyPromise=null;
+  audioRecordingStartedAt=0;
+  audioRecordingStoppedAt=0;
 
   try{if(recognition) recognition.abort();}catch(e){}
   try{speechSynthesis.cancel();}catch(e){}
