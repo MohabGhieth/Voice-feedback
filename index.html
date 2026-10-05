@@ -6,15 +6,16 @@
 <title>MG RESALE — Voice CRM V19.2 Deep Hardened</title>
 <style>
 :root{--bg:#07131a;--card:#0d2029;--text:#f4fbfd;--muted:#9eb5bc;--accent:#6ee7d8;--danger:#ff8f8f;--border:rgba(255,255,255,.1)}
-*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at top,#12303a 0%,var(--bg) 55%,#040b10 100%);color:var(--text);font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px 14px}.app{width:100%;max-width:680px}.brand{text-align:center;margin-bottom:16px}.brand h1{margin:0;font-size:30px}.brand p{margin:6px 0;color:var(--muted)}.card{background:rgba(13,32,41,.96);border:1px solid var(--border);border-radius:24px;padding:22px}.mode,.question{border-radius:15px;padding:14px 15px;background:rgba(255,255,255,.04);border:1px solid var(--border);margin-bottom:14px;line-height:1.5}.mode b{color:var(--accent)}.question{background:rgba(110,231,216,.10);border-color:rgba(110,231,216,.26)}.question small{display:block;color:var(--muted);margin-bottom:7px}.question strong{display:block;font-size:20px;line-height:1.45}.transcript{min-height:180px;white-space:pre-wrap;direction:rtl;unicode-bidi:plaintext;background:#07161d;border:1px solid var(--border);border-radius:16px;padding:14px;line-height:1.55;overflow-wrap:anywhere;margin-bottom:14px}.buttons{display:grid;grid-template-columns:1fr 1fr;gap:10px}button{border:0;border-radius:14px;padding:15px 12px;font-size:16px;font-weight:800;cursor:pointer}.start{background:var(--accent);color:#06211f}.stop{background:#6f2424;color:#fff}.reset{background:#17333d;color:#fff}button:disabled{opacity:.55;cursor:not-allowed}.status{min-height:24px;margin-top:13px;color:var(--muted);font-size:14px}.error{margin-top:12px;padding:12px 13px;border-radius:12px;color:#ffd7d7;background:rgba(140,31,31,.22);border:1px solid rgba(255,143,143,.28)}.hidden{display:none!important}.tip{color:var(--muted);font-size:12px;line-height:1.55;margin-top:13px}@media(max-width:500px){body{padding:12px 10px;align-items:flex-start}.card{padding:16px;margin-top:20px}.brand h1{font-size:27px}.buttons{grid-template-columns:1fr}}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at top,#12303a 0%,var(--bg) 55%,#040b10 100%);color:var(--text);font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px 14px}.app{width:100%;max-width:680px}.brand{text-align:center;margin-bottom:16px}.brand h1{margin:0;font-size:30px}.brand p{margin:6px 0;color:var(--muted)}.card{background:rgba(13,32,41,.96);border:1px solid var(--border);border-radius:24px;padding:22px}.mode,.question{border-radius:15px;padding:14px 15px;background:rgba(255,255,255,.04);border:1px solid var(--border);margin-bottom:14px;line-height:1.5}.mode b{color:var(--accent)}.question{background:rgba(110,231,216,.10);border-color:rgba(110,231,216,.26)}.question small{display:block;color:var(--muted);margin-bottom:7px}.question strong{display:block;font-size:20px;line-height:1.45}.transcript{min-height:180px;white-space:pre-wrap;direction:rtl;unicode-bidi:plaintext;background:#07161d;border:1px solid var(--border);border-radius:16px;padding:14px;line-height:1.55;overflow-wrap:anywhere;margin-bottom:14px}.buttons{display:grid;grid-template-columns:1fr 1fr;gap:10px}button{border:0;border-radius:14px;padding:15px 12px;font-size:16px;font-weight:800;cursor:pointer}.start{background:var(--accent);color:#06211f}.stop{background:#6f2424;color:#fff}.reset{background:#17333d;color:#fff}button:disabled{opacity:.55;cursor:not-allowed}.status{min-height:24px;margin-top:13px;color:var(--muted);font-size:14px}.error{margin-top:12px;padding:12px 13px;border-radius:12px;color:#ffd7d7;background:rgba(140,31,31,.22);border:1px solid rgba(255,143,143,.28)}.hidden{display:none!important}.manual{margin:0 0 14px;padding:14px;border-radius:15px;background:rgba(110,231,216,.08);border:1px solid rgba(110,231,216,.22)}.manual small{display:block;color:var(--muted);margin-bottom:7px}.manualRow{display:flex;gap:8px}.manual input{flex:1;min-width:0;border:1px solid var(--border);border-radius:12px;padding:13px 12px;background:#07161d;color:var(--text);font-size:18px;outline:none}.manual button{padding:13px 16px;background:var(--accent);color:#06211f}.manualHint{font-size:12px;color:var(--muted);margin-top:7px}.tip{color:var(--muted);font-size:12px;line-height:1.55;margin-top:13px}@media(max-width:500px){body{padding:12px 10px;align-items:flex-start}.card{padding:16px;margin-top:20px}.brand h1{font-size:27px}.buttons{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <main class="app">
-<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — V19.2 Deep Hardened / Story First / Smart Correction</p></div>
+<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — V19.3 Conversational CRM / Story First / Smart Correction</p></div>
 <section class="card">
 <div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. The Story never auto-finishes. Press Finish & Save only when you are completely done.</span></div>
-<div id="question" class="question hidden"><small>CRM asks:</small><strong id="questionText"></strong></div>
+<div id="question" class="question hidden"><small>CRM asks:</small><strong id="questionText"></strong><button id="interruptAnswerBtn" class="start hidden" type="button" style="margin-top:12px;width:100%;">🎙️ Interrupt & Answer</button></div>
+<div id="manualPanel" class="manual hidden"><small id="manualLabel">Manual entry</small><div class="manualRow"><input id="manualInput" type="tel" inputmode="numeric" autocomplete="off"><button id="manualSubmitBtn" type="button">Continue</button></div><div id="manualHint" class="manualHint"></div></div>
 <div id="transcript" class="transcript">No speech captured yet.</div>
 <div class="buttons">
 <button id="startBtn" class="start" type="button">🎙️ Start Voice</button>
@@ -22,7 +23,7 @@
 <button id="resetBtn" class="reset" type="button">↺ Reset</button>
 </div>
 <div id="status" class="status"></div><div id="error" class="error hidden"></div>
-<div class="tip">One page only. The microphone recording starts before the live preview and is the authoritative Story source. Browser Speech Recognition is optional and only a live preview; the original audio is transcribed at Finish & Save with Gemini 3.5 Transcribe Smart for Arabic Egypt + English real-estate terms, including spoken self-corrections. CRM questions start only after the Story is finalized.</div>
+<div class="tip">One page only. The microphone recording starts before the live preview and is the authoritative Story source. Browser Speech Recognition is optional and only a live preview; the original audio is transcribed at Finish & Save. CRM questions start only after the Story is finalized. Questions are interruptible: start speaking and the assistant stops, or use the manual answer button. New-lead phone numbers are entered manually; existing leads can be identified by the last 4 digits.</div>
 </section>
 </main>
 <script>
@@ -36,7 +37,7 @@ const PHONE_SILENCE_MS=15000;
 const CHUNK_SIZE=3600;
 const CHUNK_CONCURRENCY=4;
 const TTS_SERVER_TIMEOUT_MS=6000;
-const QUESTION_TTS_WAIT_MS=750;
+const QUESTION_TTS_WAIT_MS=2000;
 const LIVE_CORRECTION_DEBOUNCE_MS=500;
 const LIVE_CORRECTION_TIMEOUT_MS=4500;
 const LIVE_CORRECTION_MAX_SEGMENT=900;
@@ -93,6 +94,13 @@ let inactivityTimer=null;
 let restartTimer=null;
 let phoneMode=false;
 let phoneAttempts=0;
+let manualIdentityMode="";
+let questionInterruptStream=null;
+let questionInterruptContext=null;
+let questionInterruptAnalyser=null;
+let questionInterruptFrame=null;
+let questionInterruptRunning=false;
+let questionInterruptTriggered=false;
 
 let newLeadIntroPending=false;
 let questionIntroPlayed=false;
@@ -645,18 +653,19 @@ function fallbackSpeech_(text,listenAfter){
   const spoken=normalizeTtsText_(text);
   const u=new SpeechSynthesisUtterance(spoken);
   u.lang='ar-EG';
-  u.rate=.98;
+  u.rate=1.12;
   u.pitch=1;
   u.volume=1;
   const v=browserVoice_();
   if(v) u.voice=v;
 
   const finish=()=>{
+    stopQuestionInterruptMonitor_();
     if(run!==speechRunId) return;
     vadSuppressed=false;
     if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),80);
   };
-  u.onstart=()=>status('المساعد بيتكلم...');
+  u.onstart=()=>{status('المساعد بيتكلم...'); if(listenAfter) startQuestionInterruptMonitor_();};
   u.onend=finish;
   u.onerror=finish;
   try{ speechSynthesis.speak(u); }
@@ -693,6 +702,7 @@ async function playAudio_(src,listenAfter,spoken){
   status('المساعد بيتكلم...');
 
   source.onended=()=>{
+    stopQuestionInterruptMonitor_();
     if(run!==speechRunId) return;
     activeAudioSource=null;
     vadSuppressed=false;
@@ -700,6 +710,122 @@ async function playAudio_(src,listenAfter,spoken){
   };
 
   source.start(0);
+  if(listenAfter) startQuestionInterruptMonitor_();
+}
+
+
+function stopQuestionInterruptMonitor_(){
+  questionInterruptRunning=false;
+  if(questionInterruptFrame) cancelAnimationFrame(questionInterruptFrame);
+  questionInterruptFrame=null;
+  if(questionInterruptStream){try{questionInterruptStream.getTracks().forEach(t=>t.stop());}catch(e){}}
+  questionInterruptStream=null;
+  if(questionInterruptContext){try{questionInterruptContext.close();}catch(e){}}
+  questionInterruptContext=null;
+  questionInterruptAnalyser=null;
+  questionInterruptTriggered=false;
+}
+
+async function startQuestionInterruptMonitor_(){
+  stopQuestionInterruptMonitor_();
+  if(!('mediaDevices' in navigator) || !navigator.mediaDevices.getUserMedia) return false;
+  try{
+    questionInterruptStream=await navigator.mediaDevices.getUserMedia({
+      audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true},
+      video:false
+    });
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC) return false;
+    questionInterruptContext=new AC();
+    if(questionInterruptContext.state==='suspended'){try{await questionInterruptContext.resume();}catch(e){}}
+    const source=questionInterruptContext.createMediaStreamSource(questionInterruptStream);
+    questionInterruptAnalyser=questionInterruptContext.createAnalyser();
+    questionInterruptAnalyser.fftSize=2048;
+    questionInterruptAnalyser.smoothingTimeConstant=.08;
+    source.connect(questionInterruptAnalyser);
+    const data=new Float32Array(questionInterruptAnalyser.fftSize);
+    let noise=.006;
+    let voiceSince=0;
+    questionInterruptRunning=true;
+    const loop=()=>{
+      if(!questionInterruptRunning||!questionInterruptAnalyser) return;
+      questionInterruptAnalyser.getFloatTimeDomainData(data);
+      let sum=0; for(let i=0;i<data.length;i++) sum+=data[i]*data[i];
+      const rms=Math.sqrt(sum/data.length);
+      if(rms<.012) noise=noise*.97+rms*.03;
+      const threshold=Math.max(.022,noise*3.8);
+      if(rms>=threshold){
+        if(!voiceSince) voiceSince=Date.now();
+        if(Date.now()-voiceSince>=170 && !questionInterruptTriggered){
+          questionInterruptTriggered=true;
+          stopQuestionInterruptMonitor_();
+          stopCurrentSpeechOutput_();
+          vadSuppressed=false;
+          status('سمعتك — اتفضل كمّل إجابتك.');
+          setTimeout(()=>{if(listenAfter&&voiceEnabled&&!processing) startListening_(true);},90);
+          return;
+        }
+      }else{
+        voiceSince=0;
+      }
+      questionInterruptFrame=requestAnimationFrame(loop);
+    };
+    questionInterruptFrame=requestAnimationFrame(loop);
+    return true;
+  }catch(e){
+    stopQuestionInterruptMonitor_();
+    return false;
+  }
+}
+
+function enableManualAnswer_(mode,label,hint,placeholder){
+  manualIdentityMode=mode||'';
+  $('manualLabel').textContent=label||'Manual entry';
+  $('manualHint').textContent=hint||'';
+  $('manualInput').placeholder=placeholder||'';
+  $('manualSubmitBtn').textContent=mode==='new-phone' ? 'Save Number' : mode==='last4' ? 'Find Lead' : 'Continue';
+  $('manualInput').value='';
+  $('manualPanel').classList.remove('hidden');
+  setTimeout(()=>{try{$('manualInput').focus();}catch(e){}},120);
+}
+function disableManualAnswer_(){
+  manualIdentityMode='';
+  $('manualInput').value='';
+  $('manualPanel').classList.add('hidden');
+}
+function submitManualAnswer_(){
+  if(processing) return;
+  const raw=String($('manualInput').value||'').trim();
+  if(!raw){showError('اكتب البيانات الأول.');return;}
+  stopCurrentSpeechOutput_();
+  stopQuestionInterruptMonitor_();
+  clearError();
+  processing=true;
+  shouldKeepListening=false;
+  try{if(recognition) recognition.abort();}catch(e){}
+  const mode=manualIdentityMode;
+  disableManualAnswer_();
+  if(mode==='new-phone'){
+    const digits=normalizeSpokenDigits_(raw);
+    if(!validEgyptianMobileDigits_(digits)){
+      processing=false;
+      showError('رقم الموبايل لازم يكون رقم مصري صحيح من 11 رقم.');
+      enableManualAnswer_('new-phone','رقم موبايل العميل','لـ New Lead — اكتب الرقم كاملًا، 11 رقم.','01xxxxxxxxx');
+      return;
+    }
+    conversation.push('ANSWER: PHONE '+digits);
+  }else if(mode==='last4'){
+    const digits=raw.replace(/[^0-9٠-٩]/g,'').replace(/[٠-٩]/g,d=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+    if(!/^\d{4}$/.test(digits)){
+      processing=false;
+      showError('اكتب آخر 4 أرقام فقط.');
+      enableManualAnswer_('last4','آخر 4 أرقام من الموبايل','لـ Existing Lead — اكتب آخر 4 أرقام فقط.','1234');
+      return;
+    }
+    conversation.push('ANSWER: CLIENT_LAST4 '+digits);
+  }
+  render();
+  processConversation();
 }
 
 async function speak(text,listenAfter){
@@ -1781,6 +1907,8 @@ function handleResult(data){
 
   if(data.success){
     $('question').classList.add('hidden');
+    $('interruptAnswerBtn').classList.add('hidden');
+    disableManualAnswer_();
     questionText='';
     currentMode='call';
     phoneMode=false;
@@ -1810,7 +1938,7 @@ function handleResult(data){
   const q=arabicQuestion(data);
   if(q){
     status('تمام، نكمّل بالمعلومة الناقصة... بشغّل السؤال صوتيًا.');
-    ask(q);
+    ask(q,data);
     return;
   }
 
@@ -1836,42 +1964,67 @@ function speakQuestionIntroThen_(questionToSpeak){
   speak(combined,true);
 }
 
-function ask(text){
+
+function interruptAndAnswer_(){
+  if(processing || currentMode!=='answer' || manualIdentityMode) return;
+  stopCurrentSpeechOutput_();
+  stopQuestionInterruptMonitor_();
+  shouldKeepListening=true;
+  status('تمام — اتفضل جاوب.');
+  setTimeout(()=>{if(voiceEnabled&&!processing) startListening_(true);},50);
+}
+
+function ask(text,data){
   questionText=text||'محتاج معلومة ناقصة.';
-  phoneMode=isPhoneQuestion_(questionText);
+  const missing=Array.isArray(data&&data.missingFields)?data.missingFields.map(String):[];
+  const isNewLeadPhone=missing.includes('Client Number');
+  const isExistingLookup=data?.type==='CLIENT_NOT_FOUND' || data?.type==='MULTIPLE_CLIENTS' || data?.type==='PHONE_CONFIRMATION_REQUIRED' || data?.type==='PHONE_REQUIRED';
+  phoneMode=false; // Phone is never collected by voice anymore.
   phoneAttempts=0;
 
   const qLine='QUESTION: '+questionText;
-  if(conversation[conversation.length-1]!==qLine){
-    conversation.push(qLine);
-  }
+  if(conversation[conversation.length-1]!==qLine) conversation.push(qLine);
 
-  $('questionText').textContent=phoneMode
-    ? 'قول رقم الموبايل رقم رقم. خد وقتك، وأنا مستنيك تخلص.'
-    : questionText;
+  $('questionText').textContent=isNewLeadPhone
+    ? 'لـ New Lead: اكتب رقم الموبايل يدويًا.'
+    : isExistingLookup
+      ? questionText
+      : questionText;
 
   $('question').classList.remove('hidden');
-
   currentMode='answer';
-
   $('modeTitle').textContent='CRM Question';
-  $('modeText').textContent=phoneMode
-    ? 'هسمع الرقم رقم رقم. خد وقتك، ومش هقاطعك. ولو الرقم مش واضح هطلبه تاني.'
-    : 'تمام، اسمع السؤال ورد عليّ بطريقتك.';
+  $('modeText').textContent=isNewLeadPhone
+    ? 'رقم الموبايل New Lead يدوي فقط — مفيش voice phone.'
+    : isExistingLookup
+      ? 'لو ده عميل موجود، تقدر تدخل آخر 4 أرقام يدويًا. أو جاوب صوتيًا لو محتاج.'
+      : 'تمام، اسمع السؤال. لو عايز تقاطع السؤال، ابدأ كلامك فورًا.';
+
+  if(isNewLeadPhone){
+    $('interruptAnswerBtn').classList.add('hidden');
+    enableManualAnswer_('new-phone','رقم موبايل العميل','New Lead: اكتب الرقم كاملًا — 11 رقم.','01xxxxxxxxx');
+  }else if(isExistingLookup){
+    $('interruptAnswerBtn').classList.remove('hidden');
+    enableManualAnswer_('last4','آخر 4 أرقام من الموبايل','Existing Lead: اكتب آخر 4 أرقام فقط.','1234');
+  }else{
+    disableManualAnswer_();
+    $('interruptAnswerBtn').classList.remove('hidden');
+  }
 
   render();
 
-  const spoken=phoneMode
-    ? 'قول رقم الموبايل رقم رقم، خد وقتك، وأنا مستنيك تخلص.'
+  const spoken=isNewLeadPhone
+    ? 'رقم الموبايل للـ New Lead هيتكتب يدويًا. لما تخلص، دوس Continue.'
     : questionText;
 
-  // Warm the server TTS cache without blocking the conversation.
   prefetchQuestionTts_(spoken);
-  status('السؤال جاهز. بشغّل الصوت...');
+  status('السؤال جاهز... تقدر تقاطعه بصوتك في أي لحظة.');
   speakQuestionIntroThen_(spoken);
 }
 
 function reset(){
+  stopQuestionInterruptMonitor_();
+  disableManualAnswer_();
   shouldKeepListening=false;
   processing=false;
   window.__mgRequestBusy=false;
@@ -1919,6 +2072,7 @@ function reset(){
   clearLiveCorrection_();
 
   $('question').classList.add('hidden');
+  $('interruptAnswerBtn').classList.add('hidden');
   $('startBtn').disabled=false;
   $('stopBtn').disabled=true;
 
@@ -1930,6 +2084,9 @@ function reset(){
   clearError();
 }
 
+$('manualSubmitBtn').onclick=submitManualAnswer_;
+$('interruptAnswerBtn').onclick=interruptAndAnswer_;
+$('manualInput').addEventListener('keydown',e=>{if(e.key==='Enter') submitManualAnswer_();});
 $('startBtn').onclick=startSession;
 $('stopBtn').onclick=stopNow;
 $('resetBtn').onclick=reset;
