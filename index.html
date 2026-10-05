@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>MG RESALE — Voice CRM V16 Final Base</title>
+<title>MG RESALE — Voice CRM V18 Audio First</title>
 <style>
 :root{--bg:#07131a;--card:#0d2029;--text:#f4fbfd;--muted:#9eb5bc;--accent:#6ee7d8;--danger:#ff8f8f;--border:rgba(255,255,255,.1)}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at top,#12303a 0%,var(--bg) 55%,#040b10 100%);color:var(--text);font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px 14px}.app{width:100%;max-width:680px}.brand{text-align:center;margin-bottom:16px}.brand h1{margin:0;font-size:30px}.brand p{margin:6px 0;color:var(--muted)}.card{background:rgba(13,32,41,.96);border:1px solid var(--border);border-radius:24px;padding:22px}.mode,.question{border-radius:15px;padding:14px 15px;background:rgba(255,255,255,.04);border:1px solid var(--border);margin-bottom:14px;line-height:1.5}.mode b{color:var(--accent)}.question{background:rgba(110,231,216,.10);border-color:rgba(110,231,216,.26)}.question small{display:block;color:var(--muted);margin-bottom:7px}.question strong{display:block;font-size:20px;line-height:1.45}.transcript{min-height:180px;white-space:pre-wrap;direction:rtl;unicode-bidi:plaintext;background:#07161d;border:1px solid var(--border);border-radius:16px;padding:14px;line-height:1.55;overflow-wrap:anywhere;margin-bottom:14px}.buttons{display:grid;grid-template-columns:1fr 1fr;gap:10px}button{border:0;border-radius:14px;padding:15px 12px;font-size:16px;font-weight:800;cursor:pointer}.start{background:var(--accent);color:#06211f}.stop{background:#6f2424;color:#fff}.reset{background:#17333d;color:#fff}button:disabled{opacity:.55;cursor:not-allowed}.status{min-height:24px;margin-top:13px;color:var(--muted);font-size:14px}.error{margin-top:12px;padding:12px 13px;border-radius:12px;color:#ffd7d7;background:rgba(140,31,31,.22);border:1px solid rgba(255,143,143,.28)}.hidden{display:none!important}.tip{color:var(--muted);font-size:12px;line-height:1.55;margin-top:13px}@media(max-width:500px){body{padding:12px 10px;align-items:flex-start}.card{padding:16px;margin-top:20px}.brand h1{font-size:27px}.buttons{grid-template-columns:1fr}}
@@ -11,7 +11,7 @@
 </head>
 <body>
 <main class="app">
-<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — V16 Final Base / Story First / Live Correction</p></div>
+<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — V18 Audio First / Story First / Smart Correction</p></div>
 <section class="card">
 <div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. The Story never auto-finishes. Press Finish & Save only when you are completely done.</span></div>
 <div id="question" class="question hidden"><small>CRM asks:</small><strong id="questionText"></strong></div>
@@ -22,7 +22,7 @@
 <button id="resetBtn" class="reset" type="button">↺ Reset</button>
 </div>
 <div id="status" class="status"></div><div id="error" class="error hidden"></div>
-<div class="tip">One page only. No popup. GitHub Pages owns Speech Recognition; Apps Script owns CRM/Gemini/Sheets. During the Story, Speech Recognition listens continuously and Gemini correction runs in the background without interrupting you. Finish & Save starts CRM processing only after you are done. No CRM questions or auto-finish during the Story.</div>
+<div class="tip">One page only. The microphone recording is the authoritative Story source. Browser Speech Recognition is only a live preview; the original audio is transcribed at Finish & Save with Gemini 3.5 Transcribe Smart for Arabic Egypt + English real-estate terms, including spoken self-corrections. CRM questions start only after the Story is finalized.</div>
 </section>
 </main>
 <script>
@@ -37,16 +37,24 @@ const CHUNK_SIZE=3600;
 const CHUNK_CONCURRENCY=4;
 const TTS_SERVER_TIMEOUT_MS=6000;
 const QUESTION_TTS_WAIT_MS=750;
-const LIVE_CORRECTION_DEBOUNCE_MS=650;
+const LIVE_CORRECTION_DEBOUNCE_MS=500;
 const LIVE_CORRECTION_TIMEOUT_MS=4500;
 const LIVE_CORRECTION_MAX_SEGMENT=900;
 const LIVE_CORRECTION_MAX_RAW=12000;
 const TTS_CACHE_LIMIT=40;
 const CRM_PROCESS_TIMEOUT_MS=12000;
 const CRM_POLL_DELAY_MS=1800;
-const CRM_POLL_ATTEMPTS=60;
+const CRM_POLL_ATTEMPTS=90;
 
 let recognition=null;
+let audioRecorder=null;
+let audioRecorderStream=null;
+let audioRecorderChunks=[];
+let audioRecorderMimeType='';
+let authoritativeAudioBlob=null;
+let authoritativeTranscript='';
+let audioRecordingStartedAt=0;
+let audioRecordingStopped=false;
 let recognitionStartTimer=null;
 let recognitionStartAttempts=0;
 let recognitionRestartTimer=null;
@@ -121,7 +129,8 @@ function showError(t){ $('error').textContent=t||''; $('error').classList.remove
 function clearError(){ $('error').textContent=''; $('error').classList.add('hidden'); }
 
 function currentVoiceText_(){
-  return (turnFinal+' '+turnInterim).replace(/\s+/g,' ').trim();
+  const raw=(turnFinal+' '+turnInterim).replace(/\s+/g,' ').trim();
+  return currentMode==='call' ? normalizeSpokenAmounts_(raw) : raw;
 }
 
 // Chrome/Edge can end and restart a SpeechRecognition session while the user
@@ -260,7 +269,7 @@ function queueLiveCorrection_(segment){
   if(pieceHash===liveCorrectionLastQueuedHash) return;
   liveCorrectionLastQueuedHash=pieceHash;
 
-  const fullRaw=String(turnFinal||'').replace(/\s+/g,' ').trim();
+  const fullRaw=normalizeSpokenAmounts_(String(turnFinal||'').replace(/\s+/g,' ').trim());
   if(!fullRaw) return;
 
   // Keep the latest complete raw Story. The drain step sends only the delta
@@ -325,6 +334,90 @@ async function drainLiveCorrection_(){
       liveCorrectionTimer=setTimeout(drainLiveCorrection_,300);
     }
   }
+}
+
+function pickRecorderMimeType_(){
+  const candidates=['audio/mp4','audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/ogg'];
+  if(!window.MediaRecorder) return '';
+  for(const type of candidates){
+    try{ if(MediaRecorder.isTypeSupported(type)) return type; }catch(e){}
+  }
+  return '';
+}
+
+async function startAuthoritativeRecording_(){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    throw new Error('This browser cannot access the microphone.');
+  }
+  if(!window.MediaRecorder){
+    throw new Error('This browser does not support secure audio recording.');
+  }
+  stopAuthoritativeRecording_();
+  const mime=pickRecorderMimeType_();
+  const constraints={audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false};
+  audioRecorderStream=await navigator.mediaDevices.getUserMedia(constraints);
+  audioRecorderMimeType=mime || audioRecorderStream.getAudioTracks()[0]?.getSettings?.().mimeType || 'audio/mp4';
+  audioRecorderChunks=[];
+  authoritativeAudioBlob=null;
+  authoritativeTranscript='';
+  audioRecordingStopped=false;
+  audioRecordingStartedAt=Date.now();
+
+  const options=audioRecorderMimeType ? {mimeType:audioRecorderMimeType,audioBitsPerSecond:64000} : {audioBitsPerSecond:64000};
+  audioRecorder=new MediaRecorder(audioRecorderStream,options);
+  audioRecorder.ondataavailable=e=>{ if(e.data&&e.data.size) audioRecorderChunks.push(e.data); };
+  audioRecorder.onerror=e=>{ showError('Audio recording error: '+(e.error?.message||e.error?.name||'unknown')); };
+  audioRecorder.start(1000);
+  status('🎙️ بسجّل الصوت الأصلي بجودة عالية... الـpreview اللي ظاهر مجرد معاينة.');
+}
+
+function stopAuthoritativeRecording_(){
+  audioRecordingStopped=true;
+  const recorder=audioRecorder;
+  if(recorder){
+    try{ if(recorder.state!=='inactive') recorder.stop(); }catch(e){}
+  }
+  if(audioRecorderStream){
+    try{audioRecorderStream.getTracks().forEach(t=>t.stop());}catch(e){}
+  }
+  audioRecorderStream=null;
+}
+
+function waitForRecorderBlob_(){
+  return new Promise((resolve,reject)=>{
+    if(authoritativeAudioBlob){ resolve(authoritativeAudioBlob); return; }
+    const recorder=audioRecorder;
+    if(!recorder && !audioRecorderChunks.length){ reject(new Error('The original audio recording was not captured.')); return; }
+
+    let settled=false;
+    const finish=()=>{
+      if(settled) return;
+      settled=true;
+      const blob=new Blob(audioRecorderChunks,{type:audioRecorderMimeType||'audio/mp4'});
+      audioRecorder=null;
+      if(!blob.size){ reject(new Error('The original audio recording is empty.')); return; }
+      authoritativeAudioBlob=blob;
+      resolve(blob);
+    };
+
+    if(recorder && recorder.state!=='inactive'){
+      const old=recorder.onstop;
+      recorder.onstop=()=>{ try{if(old) old();}catch(e){} finish(); };
+      try{recorder.stop();}catch(e){reject(e);}
+    }else{
+      // Give the recorder's final dataavailable event a short chance to arrive.
+      setTimeout(finish,120);
+    }
+  });
+}
+
+function dataUrlFromBlob_(blob){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(String(reader.result||''));
+    reader.onerror=()=>reject(reader.error||new Error('Could not read audio recording.'));
+    reader.readAsDataURL(blob);
+  });
 }
 
 function primeSpeechOutput_(){
@@ -833,6 +926,119 @@ function armRecognitionStartWatchdog_(){
   },4000);
 }
 
+
+// =========================================================
+// VOICE ENGINE V17 — ASR quality helpers
+// =========================================================
+const SPEECH_CONTEXT_PHRASES_=[
+  'مليون','ملايين','ألف','ألفين','ميزانية','budget','million','thousand',
+  'Groova','Groova East Hills','Mivida','Mivida New Cairo','Mountain View',
+  'Mountain View Ras El Hekma','One Ninety','Uptown Cairo','Marassi',
+  'Hacienda Bay','Hyde Park','Azad','Azzar','Ramla','Ras El Hekma',
+  'Standalone','Twin House','Town House','Villa','Apartment','BUA','PUA','DP',
+  'Element','Facebook','FB','Cold Call','Refell','resale','landscape','open view'
+];
+
+const AR_AMOUNT_WORDS_={
+  'صفر':0,'واحد':1,'واحدة':1,'اتنين':2,'اثنين':2,'اثنان':2,'اتنان':2,
+  'تلاتة':3,'ثلاثة':3,'اربعة':4,'أربعة':4,'خمسة':5,'ستة':6,'سته':6,
+  'سبعة':7,'سبعه':7,'تمانية':8,'ثمانية':8,'تسعة':9,'تسعه':9,
+  'عشرة':10,'عشره':10,'حداشر':11,'احداشر':11,'اتناشر':12,'اثناشر':12,
+  'تلتاشر':13,'ثلاثتاشر':13,'اربعتاشر':14,'أربعتاشر':14,'خمستاشر':15,
+  'ستاشر':16,'سبعتاشر':17,'تمنتاشر':18,'تممنتاشر':18,'تسعتاشر':19,
+  'عشرين':20,'عشرون':20,'تلاتين':30,'ثلاثين':30,'ثلاثون':30,
+  'اربعين':40,'أربعين':40,'اربعون':40,'أربعون':40,
+  'خمسين':50,'خمسون':50,'ستين':60,'ستون':60,'سبعين':70,'سبعون':70,
+  'تمانين':80,'ثمانين':80,'ثمانون':80,'تسعين':90,'تسعون':90,
+  'مية':100,'مئة':100,'مائة':100
+};
+const EN_AMOUNT_WORDS_={
+  zero:0,one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,
+  ten:10,eleven:11,twelve:12,thirteen:13,fourteen:14,fifteen:15,
+  sixteen:16,seventeen:17,eighteen:18,nineteen:19,twenty:20,thirty:30,
+  forty:40,fifty:50,sixty:60,seventy:70,eighty:80,ninety:90
+};
+
+function numberWordValue_(word){
+  const w=String(word||'').trim().toLowerCase();
+  if(Object.prototype.hasOwnProperty.call(AR_AMOUNT_WORDS_,w)) return AR_AMOUNT_WORDS_[w];
+  if(Object.prototype.hasOwnProperty.call(EN_AMOUNT_WORDS_,w)) return EN_AMOUNT_WORDS_[w];
+  return null;
+}
+
+function parseSpokenNumberPhrase_(phrase){
+  const parts=String(phrase||'').toLowerCase().trim().split(/\s+/).filter(Boolean);
+  if(!parts.length) return null;
+  let value=0,handled=false;
+  for(const part of parts){
+    const n=numberWordValue_(part);
+    if(n==null) return null;
+    value+=n; handled=true;
+  }
+  return handled ? value : null;
+}
+
+function normalizeSpokenAmounts_(text){
+  let s=String(text||'').replace(/\s+/g,' ').trim();
+  if(!s) return '';
+  s=s.replace(/[٠-٩]/g,d=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+
+  const words=Object.keys({...AR_AMOUNT_WORDS_,...EN_AMOUNT_WORDS_})
+    .sort((a,b)=>b.length-a.length)
+    .map(x=>x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|');
+
+  // Handle mixed-language spoken ranges before single-amount normalization:
+  // "forty to fifty million", "من أربعين لخمسين مليون", "أربعين إلى خمسين مليون".
+  const rangeWords=new RegExp(
+    '(^|[^\\p{L}])('+words+')(?:\\s+('+words+'))?\\s*(?:إلى|الى|لـ|ل|من|to|through|حتى)\\s*('+words+')(?:\\s+('+words+'))?\\s*(million|مليون|ملايين|mn|m)(?=$|[^\\p{L}])','giu'
+  );
+  s=s.replace(rangeWords,(all,prefix,a1,a2,b1,b2,unit)=>{
+    const left=parseSpokenNumberPhrase_([a1,a2].filter(Boolean).join(' '));
+    const right=parseSpokenNumberPhrase_([b1,b2].filter(Boolean).join(' '));
+    return left!=null && right!=null ? prefix+left+' million - '+right+' million' : all;
+  });
+
+  s=s.replace(/(?:^|\s)من\s+(\d+(?:\.\d+)?)\s+million/giu,'$1 million');
+
+  // Single spoken amount with an explicit monetary unit.
+  const wordAmount=new RegExp('(^|[^\\p{L}])((?:'+words+')(?:\\s+(?:'+words+'))?)\\s*(million|مليون|ملايين|mn|m)(?=$|[^\\p{L}])','giu');
+  s=s.replace(wordAmount,(all,prefix,numWords,unit)=>{
+    const value=parseSpokenNumberPhrase_(numWords);
+    return value!=null ? prefix+String(value)+' million' : all;
+  });
+
+  // Deterministic numeric/Arabic range handling, including a leading "من":
+  // 40 مليون لـ 50 مليون / من 40 مليون إلى 50 مليون.
+  s=s.replace(/(?:من\s+)?(\d+(?:[.,]\d+)?)\s*(?:مليون|ملايين|million|mn|m)\s*(?:إلى|الى|لـ|ل|to|through|حتى|-)\s*(\d+(?:[.,]\d+)?)\s*(?:مليون|ملايين|million|mn|m)/giu,'$1 million - $2 million');
+  s=s.replace(/(?:من\s+)?(\d+(?:[.,]\d+)?)\s*(?:إلى|الى|لـ|ل|to|through|حتى)\s*(\d+(?:[.,]\d+)?)\s*(?:مليون|ملايين|million|mn|m)/giu,'$1 million - $2 million');
+
+  // Numeric money tokens.
+  s=s.replace(/\b(\d+(?:[.,]\d+)?)\s*(مليون|ملايين|million|mn|m)\b/giu,'$1 million');
+
+  // Numeric ranges with the unit on either side or only at the end.
+  s=s.replace(/(\d+(?:\.\d+)?)\s*(?:million)\s*(?:إلى|الى|لـ|ل|to|through|حتى|-)\s*(\d+(?:\.\d+)?)\s*(?:million)?/giu,'$1 million - $2 million');
+  s=s.replace(/(\d+(?:\.\d+)?)\s*(?:إلى|الى|لـ|ل|to|through|حتى|-)\s*(\d+(?:\.\d+)?)\s*(?:million|مليون|ملايين)(?=$|[^\p{L}])/giu,'$1 million - $2 million');
+  return s.replace(/\s+/g,' ').trim();
+}
+
+function chooseBestSpeechAlternative_(result){
+  const alts=[];
+  const len=Number(result?.length||0);
+  for(let i=0;i<len;i++){
+    const a=result[i];
+    const t=String(a?.transcript||'').trim();
+    if(!t) continue;
+    let score=Number(a?.confidence||0)*10;
+    if(/مليون|ملايين|million|mn\b|\bmn|ألف|thousand/i.test(t)) score+=5;
+    if(/budget|ميزاني|Groova|Mivida|Mountain|View|Standalone|Twin|Town|Villa|Apartment|Element|Facebook|Cold|Refell/i.test(t)) score+=2;
+    if(/[٠-٩0-9]/.test(t)) score+=1;
+    if(/[\u0600-\u06ff]/.test(t)) score+=1;
+    alts.push({t,score});
+  }
+  alts.sort((a,b)=>b.score-a.score);
+  return alts.length ? alts[0].t : '';
+}
+
 function createRecognition_(){
   const C=ctor();
   if(!C) throw new Error('Speech Recognition is not available. Use current Chrome or Edge.');
@@ -845,6 +1051,14 @@ function createRecognition_(){
   r.interimResults=true;
   r.maxAlternatives=3;
   r.lang='ar-EG';
+
+  // Chrome exposes contextual phrase biasing experimentally. It is feature-
+  // detected so unsupported iOS/browser builds simply ignore it.
+  try{
+    if('SpeechRecognitionPhrase' in window && 'phrases' in r){
+      r.phrases=SPEECH_CONTEXT_PHRASES_.map(p=>new SpeechRecognitionPhrase(p,8.0));
+    }
+  }catch(e){}
 
   r.onstart=()=>{
     clearRecognitionWatchdogs_();
@@ -871,7 +1085,7 @@ function createRecognition_(){
 
     for(let i=e.resultIndex;i<e.results.length;i++){
       const result=e.results[i];
-      const text=String(result?.[0]?.transcript||'').trim();
+      const text=chooseBestSpeechAlternative_(result);
       if(!text) continue;
 
       if(result.isFinal){
@@ -1021,6 +1235,21 @@ function startListening_(newTurn){
   shouldKeepListening=true;
   isListening=false;
 
+  if(currentMode==='call' && newTurn){
+    startAuthoritativeRecording_().catch(err=>{
+      // Recording is required for the authoritative Story path. If unavailable,
+      // stop before silently falling back to a lower-quality transcript.
+      shouldKeepListening=false;
+      isListening=false;
+      stopAuthoritativeRecording_();
+      try{ if(recognition) recognition.abort(); }catch(e){}
+      $('startBtn').disabled=false;
+      $('stopBtn').disabled=true;
+      showError(err.message||String(err));
+      status('');
+    });
+  }
+
   $('modeTitle').textContent=currentMode==='answer' ? 'Listening for Answer' : 'Listening';
   $('startBtn').disabled=true;
   $('stopBtn').disabled=false;
@@ -1085,7 +1314,7 @@ function startSession(){
   $('stopBtn').disabled=false;
 
   $('modeTitle').textContent='Preparing microphone';
-  $('modeText').textContent='استنى لحد ما يظهر Listening. بعد كده اتكلم براحتك؛ Gemini هيصحح الكلام في الخلفية من غير ما يقاطعك أو يسألك.';
+  $('modeText').textContent='استنى لحد ما يظهر Listening. بعد كده اتكلم براحتك؛ التسجيل الأصلي بيتحفظ مؤقتًا، والـAI هيستخدمه كمصدر الحقيقة في الـStory النهائية.';
   status('بجهز الميكروفون... أول ما يظهر Listening ابدأ الكلام.');
 
   // Reset all per-call async guards. A previous failed request must never block
@@ -1143,6 +1372,7 @@ function finishTurn_(reason){
 
   try{ if(recognition) recognition.abort(); }catch(e){}
 
+  if(currentMode==='call') stopAuthoritativeRecording_();
   const t=currentVoiceText_();
 
   turnFinal='';
@@ -1155,7 +1385,7 @@ function finishTurn_(reason){
     ? (phoneMode ? 'خلصت الرقم. بتأكد منه...' : 'خلصت الـstory. بجهّز المكالمة للحفظ...')
     : (phoneMode ? 'خلصت الرقم. بتأكد منه...' : 'بجهّز المكالمة للحفظ...'));
 
-  if(!t){
+  if(!t && currentMode!=='call' && !authoritativeAudioBlob && !audioRecorderChunks.length){
     processing=false;
     $('startBtn').disabled=false;
     status('مفيش كلام اتسجل.');
@@ -1207,14 +1437,12 @@ function finishTurn_(reason){
   // still pending/in-flight, keep the raw Story and let final extraction handle it.
   conversation.push('FEEDBACK: '+(correctedStoryAtFinish || t));
   render();
-  processConversation().catch(err=>{
-    window.__mgRequestBusy=false;
-    processing=false;
-    $('startBtn').disabled=false;
-    $('stopBtn').disabled=true;
-    showError(err && err.message ? err.message : String(err));
-    status('حصل خطأ غير متوقع. اضغط Start Voice وابدأ مكالمة جديدة.');
-  });
+  stopAuthoritativeRecording_();
+  waitForRecorderBlob_().then(()=>processConversation()).catch(err=>{
+    processing=false; window.__mgRequestBusy=false; $('startBtn').disabled=false; $('stopBtn').disabled=true;
+    showError(err.message||String(err)); status('');
+  }).then(()=>{});
+  return;
 }
 
 function stopNow(){
@@ -1292,8 +1520,15 @@ function fireVoiceProcess_(session){
   document.head.appendChild(script);
 }
 
+async function sendAuthoritativeAudio_(session,base64,mimeType){
+  // Apps Script POST is intentionally fire-and-poll: GitHub Pages cannot read
+  // the cross-origin response reliably, but the request itself reaches doPost.
+  const payload=JSON.stringify({api:'voiceAudio',session:session,mimeType:String(mimeType||'audio/mp4'),base64:base64});
+  await fetch(API,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:payload});
+}
+
 async function processConversation(){
-  if(!conversation.length){
+  if(!conversation.length && !authoritativeAudioBlob && !audioRecorderChunks.length){
     processing=false;
     $('startBtn').disabled=false;
     $('stopBtn').disabled=true;
@@ -1312,7 +1547,7 @@ async function processConversation(){
 
   const transcript=conversation.join('\n').trim();
 
-  if(!transcript){
+  if(!transcript && !authoritativeAudioBlob){
     window.__mgRequestBusy=false;
     processing=false;
     $('startBtn').disabled=false;
@@ -1321,7 +1556,7 @@ async function processConversation(){
     return;
   }
 
-  const transcriptHash=stableHash_(transcript);
+  const transcriptHash=authoritativeAudioBlob ? ('AUDIO:'+authoritativeAudioBlob.size+':'+audioRecordingStartedAt) : stableHash_(transcript);
   if(lastProcessedTranscriptHash===transcriptHash){
     window.__mgRequestBusy=false;
     processing=false;
@@ -1332,13 +1567,56 @@ async function processConversation(){
   }
   lastProcessedTranscriptHash=transcriptHash;
 
-  status('خلصنا الكلام. بثبّت البيانات بسرعة...');
+  status(authoritativeAudioBlob ? 'خلصنا الكلام. برفع التسجيل الأصلي للـAI عشان يثبت الـStory بدقة...' : 'خلصنا الكلام. بثبّت البيانات بسرعة...');
 
   const session=makeSession_();
+
+  if(authoritativeAudioBlob){
+    try{
+      const dataUrl=await dataUrlFromBlob_(authoritativeAudioBlob);
+      const base64=String(dataUrl).split(',')[1]||'';
+      if(!base64) throw new Error('The original audio recording could not be prepared.');
+      if(base64.length>28000000) throw new Error('The recording is too large. Finish shorter calls or use the manual text fallback.');
+
+      await sendAuthoritativeAudio_(session,base64,authoritativeAudioBlob.type||audioRecorderMimeType||'audio/mp4');
+      status('التسجيل الأصلي وصل. Gemini بيحوّل القصة لنص وبيصلّح الـself-corrections...');
+      let result=null;
+      for(let attempt=0;attempt<CRM_POLL_ATTEMPTS;attempt++){
+        try{ result=await jsonpRequest({api:'voiceStatus',session:session},3000); }
+        catch(e){ result={retry:true,processing:true,message:e.message||String(e)}; }
+        if(result && !result.retry) break;
+        status(attempt<3 ? 'ثواني... بيثبت الـStory من التسجيل الأصلي.' : 'لسه بيحوّل التسجيل ويحفظ البيانات...');
+        await new Promise(resolve=>setTimeout(resolve,CRM_POLL_DELAY_MS));
+      }
+      if(!result || result.retry) throw new Error('الحفظ لسه شغال في الخلفية. ما تعيدش المكالمة؛ افتح الـCRM بعد دقيقة للتأكد من النتيجة.');
+      if(result && result.authoritativeTranscript){
+        conversation=['FEEDBACK: '+String(result.authoritativeTranscript).trim()];
+        savedFeedbackText='';
+        render();
+      }
+      authoritativeAudioBlob=null;
+      audioRecorderChunks=[];
+      audioRecorderMimeType='';
+      handleResult(result);
+      return;
+    }catch(e){
+      // Do not silently save an inferior browser transcript. The user can see
+      // the exact failure and retry the same call, preserving the audio-first contract.
+      window.__mgRequestBusy=false;
+      processing=false;
+      $('startBtn').disabled=false;
+      $('stopBtn').disabled=true;
+      showError(e.message||String(e));
+      status('التسجيل الأصلي لم يتمكن من الوصول للـAI. لم أحفظ Story غير موثوقة.');
+      return;
+    }
+  }
+
+  const transcriptForFallback=conversation.join('\n').trim();
   const chunks=[];
 
-  for(let i=0;i<transcript.length;i+=CHUNK_SIZE){
-    chunks.push(transcript.slice(i,i+CHUNK_SIZE));
+  for(let i=0;i<transcriptForFallback.length;i+=CHUNK_SIZE){
+    chunks.push(transcriptForFallback.slice(i,i+CHUNK_SIZE));
   }
 
   try{
