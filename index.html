@@ -11,7 +11,7 @@
 </head>
 <body>
 <main class="app">
-<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — V8 Story First</p></div>
+<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — V9 Story First / Stable</p></div>
 <section class="card">
 <div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. The Story never auto-finishes. Press Finish & Save only when you are completely done.</span></div>
 <div id="question" class="question hidden"><small>CRM asks:</small><strong id="questionText"></strong></div>
@@ -22,7 +22,7 @@
 <button id="resetBtn" class="reset" type="button">↺ Reset</button>
 </div>
 <div id="status" class="status"></div><div id="error" class="error hidden"></div>
-<div class="tip">One page only. No popup. GitHub Pages owns Speech Recognition; Apps Script owns CRM/Gemini/Sheets. During the Story, the system only listens and collects. No Gemini, no CRM questions, and no auto-finish until you press Finish &amp; Save.</div>
+<div class="tip">One page only. No popup. GitHub Pages owns Speech Recognition; Apps Script owns CRM/Gemini/Sheets. During the Story, the system only listens and collects. Finish & Save starts CRM processing only after you are done. No Gemini, no CRM questions, and no auto-finish until you press Finish &amp; Save.</div>
 </section>
 </main>
 <script>
@@ -84,6 +84,21 @@ let ttsCache=new Map();
 let ttsPending=new Map();
 
 const $=id=>document.getElementById(id);
+
+// Stable, synchronous hash used only to prevent duplicate processing of the
+// exact same transcript. This MUST exist before processConversation() runs.
+function stableHash_(text){
+  const s=String(text||'');
+  let h=2166136261;
+  for(let i=0;i<s.length;i++){
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h,16777619);
+  }
+  return (h>>>0).toString(16);
+}
+
+let lastProcessedTranscriptHash='';
+let requestGeneration=0;
 
 function status(t){ $('status').textContent=t||''; }
 function showError(t){ $('error').textContent=t||''; $('error').classList.remove('hidden'); }
@@ -866,9 +881,15 @@ function startSession(){
   $('startBtn').disabled=true;
   $('stopBtn').disabled=false;
 
-  $('modeTitle').textContent='Starting';
-  $('modeText').textContent='سامعك. اتكلم براحتك، وأنا هجمع الـstory كلها. مش هسألك أي سؤال أثناء الـstory. لما تخلص اضغط Finish & Save.';
-  status('ببدأ التسجيل... اتكلم براحتك. زر Finish & Save متاح من دلوقتي لما تخلص.');
+  $('modeTitle').textContent='Preparing microphone';
+  $('modeText').textContent='استنى ثانية واحدة. أول ما أقول Listening ابدأ كلامك. أنا هجمع الـstory كلها ومش هسألك أي سؤال أثناء الـstory.';
+  status('بجهز الميكروفون... ابدأ الكلام فقط بعد ما يظهر Listening. زر Finish & Save متاح من دلوقتي.');
+
+  // Reset all per-call async guards. A previous failed request must never block
+  // a brand-new Story.
+  window.__mgRequestBusy=false;
+  window.__mgStartBusy=true;
+  requestGeneration++;
 
   // Reset the startup-attempt counter for this manual Start.
   clearRecognitionWatchdogs_();
@@ -967,7 +988,14 @@ function finishTurn_(reason){
 
   conversation.push('FEEDBACK: '+t);
   render();
-  processConversation();
+  processConversation().catch(err=>{
+    window.__mgRequestBusy=false;
+    processing=false;
+    $('startBtn').disabled=false;
+    $('stopBtn').disabled=true;
+    showError(err && err.message ? err.message : String(err));
+    status('حصل خطأ غير متوقع. اضغط Start Voice وابدأ مكالمة جديدة.');
+  });
 }
 
 function stopNow(){
@@ -1018,8 +1046,17 @@ async function sendConversationChunk_(session,index,total,text){
 
 
 async function processConversation(){
-  if(!conversation.length) return;
-  if(window.__mgRequestBusy) return;
+  if(!conversation.length){
+    processing=false;
+    $('startBtn').disabled=false;
+    $('stopBtn').disabled=true;
+    status('مفيش قصة كاملة جاهزة للحفظ.');
+    return;
+  }
+  if(window.__mgRequestBusy){
+    status('في عملية حفظ شغالة بالفعل. ثواني...');
+    return;
+  }
 
   window.__mgRequestBusy=true;
   $('startBtn').disabled=true;
