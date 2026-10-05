@@ -1331,13 +1331,19 @@ function handleResult(data){
     phoneMode=false;
 
     $('modeTitle').textContent='Saved';
-    $('modeText').textContent='تم حفظ وتصحيح قصة المكالمة. جاهز للمكالمة اللي بعدها.';
+    $('modeText').textContent=data.aiFallback
+      ? 'تم حفظ المكالمة بالطريقة الآمنة. Gemini غير متاح مؤقتًا، ونقدر نكمل المكالمة التالية.'
+      : 'تم حفظ وتصحيح قصة المكالمة. جاهز للمكالمة اللي بعدها.';
 
     savedFeedbackText=data.feedback ? String(data.feedback) : '';
     conversation=[];
     render();
-    status('تمام، المكالمة اتحفظت. جاهز للمكالمة اللي بعدها.');
-    speak(data.message||'تم حفظ المكالمة بنجاح.',false);
+    status(data.aiFallback
+      ? 'تمام، المكالمة اتحفظت. Gemini كان غير متاح مؤقتًا، فستخدمت استخراجًا آمنًا بدون ما نعطل الـCRM.'
+      : 'تمام، المكالمة اتحفظت. جاهز للمكالمة اللي بعدها.');
+    speak(data.aiFallback
+      ? 'تمام، المكالمة اتحفظت. نقدر نكمل.'
+      : (data.message||'تم حفظ المكالمة بنجاح.'),false);
 
     $('startBtn').disabled=false;
     $('stopBtn').disabled=true;
