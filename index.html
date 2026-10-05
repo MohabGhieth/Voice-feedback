@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>MG RESALE — Voice CRM V8</title>
+<title>MG RESALE — Voice CRM V16 Final Base</title>
 <style>
 :root{--bg:#07131a;--card:#0d2029;--text:#f4fbfd;--muted:#9eb5bc;--accent:#6ee7d8;--danger:#ff8f8f;--border:rgba(255,255,255,.1)}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at top,#12303a 0%,var(--bg) 55%,#040b10 100%);color:var(--text);font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px 14px}.app{width:100%;max-width:680px}.brand{text-align:center;margin-bottom:16px}.brand h1{margin:0;font-size:30px}.brand p{margin:6px 0;color:var(--muted)}.card{background:rgba(13,32,41,.96);border:1px solid var(--border);border-radius:24px;padding:22px}.mode,.question{border-radius:15px;padding:14px 15px;background:rgba(255,255,255,.04);border:1px solid var(--border);margin-bottom:14px;line-height:1.5}.mode b{color:var(--accent)}.question{background:rgba(110,231,216,.10);border-color:rgba(110,231,216,.26)}.question small{display:block;color:var(--muted);margin-bottom:7px}.question strong{display:block;font-size:20px;line-height:1.45}.transcript{min-height:180px;white-space:pre-wrap;direction:rtl;unicode-bidi:plaintext;background:#07161d;border:1px solid var(--border);border-radius:16px;padding:14px;line-height:1.55;overflow-wrap:anywhere;margin-bottom:14px}.buttons{display:grid;grid-template-columns:1fr 1fr;gap:10px}button{border:0;border-radius:14px;padding:15px 12px;font-size:16px;font-weight:800;cursor:pointer}.start{background:var(--accent);color:#06211f}.stop{background:#6f2424;color:#fff}.reset{background:#17333d;color:#fff}button:disabled{opacity:.55;cursor:not-allowed}.status{min-height:24px;margin-top:13px;color:var(--muted);font-size:14px}.error{margin-top:12px;padding:12px 13px;border-radius:12px;color:#ffd7d7;background:rgba(140,31,31,.22);border:1px solid rgba(255,143,143,.28)}.hidden{display:none!important}.tip{color:var(--muted);font-size:12px;line-height:1.55;margin-top:13px}@media(max-width:500px){body{padding:12px 10px;align-items:flex-start}.card{padding:16px;margin-top:20px}.brand h1{font-size:27px}.buttons{grid-template-columns:1fr}}
@@ -11,7 +11,7 @@
 </head>
 <body>
 <main class="app">
-<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — V9 Story First / Stable</p></div>
+<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — V16 Final Base / Story First / Live Correction</p></div>
 <section class="card">
 <div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. The Story never auto-finishes. Press Finish & Save only when you are completely done.</span></div>
 <div id="question" class="question hidden"><small>CRM asks:</small><strong id="questionText"></strong></div>
@@ -22,7 +22,7 @@
 <button id="resetBtn" class="reset" type="button">↺ Reset</button>
 </div>
 <div id="status" class="status"></div><div id="error" class="error hidden"></div>
-<div class="tip">One page only. No popup. GitHub Pages owns Speech Recognition; Apps Script owns CRM/Gemini/Sheets. During the Story, the system only listens and collects. Finish & Save starts CRM processing only after you are done. No Gemini, no CRM questions, and no auto-finish until you press Finish &amp; Save.</div>
+<div class="tip">One page only. No popup. GitHub Pages owns Speech Recognition; Apps Script owns CRM/Gemini/Sheets. During the Story, Speech Recognition listens continuously and Gemini correction runs in the background without interrupting you. Finish & Save starts CRM processing only after you are done. No CRM questions or auto-finish during the Story.</div>
 </section>
 </main>
 <script>
@@ -35,11 +35,16 @@ const ANSWER_SILENCE_MS=15000;
 const PHONE_SILENCE_MS=15000;
 const CHUNK_SIZE=3600;
 const CHUNK_CONCURRENCY=4;
-const TTS_SERVER_TIMEOUT_MS=900;
+const TTS_SERVER_TIMEOUT_MS=6000;
+const QUESTION_TTS_WAIT_MS=750;
+const LIVE_CORRECTION_DEBOUNCE_MS=650;
+const LIVE_CORRECTION_TIMEOUT_MS=4500;
+const LIVE_CORRECTION_MAX_SEGMENT=900;
+const LIVE_CORRECTION_MAX_RAW=12000;
 const TTS_CACHE_LIMIT=40;
 const CRM_PROCESS_TIMEOUT_MS=12000;
 const CRM_POLL_DELAY_MS=1800;
-const CRM_POLL_ATTEMPTS=35;
+const CRM_POLL_ATTEMPTS=60;
 
 let recognition=null;
 let recognitionStartTimer=null;
@@ -82,6 +87,17 @@ let newLeadIntroPending=false;
 let questionIntroPlayed=false;
 let ttsCache=new Map();
 let ttsPending=new Map();
+let liveCorrectedText='';
+let liveCorrectionPending='';
+let liveCorrectionTimer=null;
+let liveCorrectionInFlight=false;
+let liveCorrectionGeneration=0;
+let liveCorrectionLastQueuedHash='';
+let liveCorrectionSession='';
+let liveCorrectionRawSent='';
+let speechOutputContext=null;
+let activeAudioSource=null;
+let speechRunId=0;
 
 const $=id=>document.getElementById(id);
 
@@ -194,22 +210,153 @@ function render(){
     .map(formatConversationLine_)
     .filter(Boolean);
 
-  // The previous saved call is shown only in Saved state. It is cleared
-  // immediately when the next Story starts, so old feedback can never leak
-  // into a new call.
   if(savedFeedbackText){
     rows.push('FEEDBACK (SAVED): '+savedFeedbackText);
   }
 
   const live=currentVoiceText_();
-  if(live){
-    rows.push((currentMode==='call' ? 'STORY (LIVE): ' : 'ANSWER (LIVE): ')+live);
+  if(currentMode==='call'){
+    // Once Gemini has a correction for the complete finalized Story, show that
+    // corrected Story in the main transcript area. Do not display the raw and
+    // corrected versions as two competing copies of the same sentence.
+    const visibleStory=liveCorrectedText || live;
+    if(visibleStory) rows.push('STORY (LIVE): '+maskConversationForDisplay_(visibleStory));
+  }else if(live){
+    rows.push('ANSWER (LIVE): '+live);
   }
 
   $('transcript').textContent=rows.length
     ? rows.join('\n\n')
     : 'No speech captured yet.';
 }
+
+function clearLiveCorrection_(){
+  clearTimeout(liveCorrectionTimer);
+  liveCorrectionTimer=null;
+  liveCorrectionPending='';
+  liveCorrectionGeneration++;
+  liveCorrectionInFlight=false;
+  liveCorrectionLastQueuedHash='';
+  liveCorrectionSession='';
+  liveCorrectionRawSent='';
+  liveCorrectedText='';
+}
+
+function queueLiveCorrection_(segment){
+  if(currentMode!=='call' || processing || !voiceEnabled) return;
+  let piece=String(segment||'').replace(/\s+/g,' ').trim();
+  if(!piece) return;
+
+  // The visible correction is based on the COMPLETE finalized Story, not on
+  // isolated chunks. This is important when the salesperson corrects a number
+  // or phrase they just said, e.g. "40 to 50" -> "40 million to 50 million".
+  // Gemini can then replace the earlier mistaken wording instead of appending a
+  // second, conflicting sentence.
+  if(piece.length>LIVE_CORRECTION_MAX_SEGMENT){
+    piece=piece.slice(0,LIVE_CORRECTION_MAX_SEGMENT);
+  }
+
+  const pieceHash=stableHash_(piece.toLowerCase());
+  if(pieceHash===liveCorrectionLastQueuedHash) return;
+  liveCorrectionLastQueuedHash=pieceHash;
+
+  const fullRaw=String(turnFinal||'').replace(/\s+/g,' ').trim();
+  if(!fullRaw) return;
+
+  // Keep the latest complete raw Story. The drain step sends only the delta
+  // that has not already been uploaded to Apps Script, avoiding giant JSONP
+  // URLs while still letting the server maintain the full correction context.
+  liveCorrectionPending=fullRaw.slice(0,LIVE_CORRECTION_MAX_RAW);
+
+  clearTimeout(liveCorrectionTimer);
+  liveCorrectionTimer=setTimeout(drainLiveCorrection_,LIVE_CORRECTION_DEBOUNCE_MS);
+}
+
+async function drainLiveCorrection_(){
+  liveCorrectionTimer=null;
+  if(liveCorrectionInFlight || !liveCorrectionPending || currentMode!=='call' || processing || !voiceEnabled) return;
+
+  const raw=String(liveCorrectionPending||'').replace(/\s+/g,' ').trim();
+  liveCorrectionPending='';
+  if(!raw) return;
+
+  liveCorrectionInFlight=true;
+  const generation=liveCorrectionGeneration;
+
+  try{
+    const isAppend=raw.indexOf(liveCorrectionRawSent)===0;
+    const delta=isAppend ? raw.slice(liveCorrectionRawSent.length).trim() : raw;
+
+    // If nothing new was added, there is nothing to send. This can happen when
+    // Chromium repeats a finalized result after restarting recognition.
+    if(!delta){
+      liveCorrectionInFlight=false;
+      return;
+    }
+
+    const data=await jsonpRequest({
+      api:'voiceCorrect',
+      session:liveCorrectionSession,
+      text:delta,
+      replace:isAppend?'0':'1'
+    },LIVE_CORRECTION_TIMEOUT_MS);
+
+    if(generation!==liveCorrectionGeneration) return;
+
+    if(data && data.success && data.corrected){
+      const corrected=String(data.corrected).replace(/\s+/g,' ').trim();
+      if(corrected){
+        // REPLACE the visible corrected Story. Do not append corrections. This
+        // allows a later self-correction to rewrite the earlier phrase.
+        liveCorrectedText=corrected;
+        liveCorrectionRawSent=raw;
+        render();
+        if(currentMode==='call' && shouldKeepListening && !processing){
+          status('Gemini بيصحح الكلام في الخلفية... كمّل براحتك.');
+        }
+      }
+    }
+  }catch(e){
+    // Best effort only. A correction failure can never stop listening or CRM.
+  }finally{
+    liveCorrectionInFlight=false;
+    if(liveCorrectionPending && currentMode==='call' && !processing && voiceEnabled){
+      clearTimeout(liveCorrectionTimer);
+      liveCorrectionTimer=setTimeout(drainLiveCorrection_,300);
+    }
+  }
+}
+
+function primeSpeechOutput_(){
+  if(!('speechSynthesis' in window)) return;
+  try{
+    speechSynthesis.getVoices();
+    const u=new SpeechSynthesisUtterance('جاهز');
+    u.lang='ar-EG';
+    u.volume=0;
+    u.rate=1;
+    speechSynthesis.cancel();
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+
+function primeAudioOutput_(){
+  try{
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC) return null;
+    if(!speechOutputContext) speechOutputContext=new AC();
+    const p=speechOutputContext.resume();
+    if(p&&typeof p.catch==='function') p.catch(()=>{});
+    return speechOutputContext;
+  }catch(e){
+    return null;
+  }
+}
+
+if('speechSynthesis' in window){
+  speechSynthesis.onvoiceschanged=()=>{ try{ speechSynthesis.getVoices(); }catch(e){} };
+}
+
 function ctor(){
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 }
@@ -399,6 +546,15 @@ function browserVoice_(){
   return voices.slice().sort((a,b)=>score(b)-score(a))[0]||null;
 }
 
+function stopCurrentSpeechOutput_(){
+  speechRunId++;
+  try{speechSynthesis.cancel();}catch(e){}
+  if(activeAudioSource){
+    try{activeAudioSource.onended=null; activeAudioSource.stop(0);}catch(e){}
+    activeAudioSource=null;
+  }
+}
+
 function fallbackSpeech_(text,listenAfter){
   if(!('speechSynthesis' in window)){
     vadSuppressed=false;
@@ -406,6 +562,7 @@ function fallbackSpeech_(text,listenAfter){
     return;
   }
 
+  const run=++speechRunId;
   try{speechSynthesis.cancel();}catch(e){}
 
   const spoken=normalizeTtsText_(text);
@@ -417,21 +574,61 @@ function fallbackSpeech_(text,listenAfter){
   const v=browserVoice_();
   if(v) u.voice=v;
 
+  const finish=()=>{
+    if(run!==speechRunId) return;
+    vadSuppressed=false;
+    if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),80);
+  };
   u.onstart=()=>status('المساعد بيتكلم...');
-  u.onend=()=>{
+  u.onend=finish;
+  u.onerror=finish;
+  try{ speechSynthesis.speak(u); }
+  catch(e){ finish(); }
+}
+
+function decodeBase64ToBuffer_(dataUrl){
+  const comma=String(dataUrl||'').indexOf(',');
+  if(comma<0) throw new Error('Invalid audio data.');
+  const base64=String(dataUrl).slice(comma+1);
+  const binary=atob(base64);
+  const bytes=new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+async function playAudio_(src,listenAfter,spoken){
+  const run=++speechRunId;
+  try{speechSynthesis.cancel();}catch(e){}
+
+  const ctx=primeAudioOutput_();
+  if(!ctx) throw new Error('Web Audio is not available.');
+  await ctx.resume();
+  if(run!==speechRunId) return;
+
+  const bytes=decodeBase64ToBuffer_(src);
+  const buffer=await ctx.decodeAudioData(bytes.slice(0));
+  if(run!==speechRunId) return;
+
+  const source=ctx.createBufferSource();
+  source.buffer=buffer;
+  source.connect(ctx.destination);
+  activeAudioSource=source;
+  status('المساعد بيتكلم...');
+
+  source.onended=()=>{
+    if(run!==speechRunId) return;
+    activeAudioSource=null;
     vadSuppressed=false;
-    if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),80);
+    if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),60);
   };
-  u.onerror=()=>{
-    vadSuppressed=false;
-    if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),80);
-  };
-  speechSynthesis.speak(u);
+
+  source.start(0);
 }
 
 async function speak(text,listenAfter){
   if(!text) return;
 
+  stopCurrentSpeechOutput_();
   shouldKeepListening=false;
   vadSuppressed=true;
   clearTimeout(silenceTimer);
@@ -440,35 +637,31 @@ async function speak(text,listenAfter){
 
   const spoken=normalizeTtsText_(text);
   const cached=getCachedTts_(spoken);
+  const myRun=speechRunId;
 
-  // Critical latency rule: if server audio is already cached, use it immediately.
-  // Otherwise start browser TTS NOW and fetch the better Egyptian server voice in
-  // the background. Never make the user wait on a network round-trip just to hear
-  // the next question.
   if(cached&&cached.src){
-    playAudio_(cached.src,listenAfter,spoken);
-    return;
+    try{ await playAudio_(cached.src,listenAfter,spoken); return; }
+    catch(e){ fallbackSpeech_(spoken,listenAfter); return; }
   }
 
-  // Fire-and-forget warmup for the next occurrence.
-  fetchTts_(spoken).catch(()=>{});
-  fallbackSpeech_(spoken,listenAfter);
-}
-
-function playAudio_(src,listenAfter,spoken){
-  const audio=new Audio(src);
-  status('المساعد بيتكلم...');
-  audio.onended=()=>{
-    vadSuppressed=false;
-    if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),60);
-  };
-  audio.onerror=()=>fallbackSpeech_(spoken,listenAfter);
+  // Give the already-prefetched Egyptian server TTS a short head start. This
+  // avoids the old "no question audio" problem while never waiting seconds.
   try{
-    const p=audio.play();
-    if(p&&typeof p.catch==='function') p.catch(()=>fallbackSpeech_(spoken,listenAfter));
-  }catch(e){
-    fallbackSpeech_(spoken,listenAfter);
-  }
+    const serverPromise=fetchTts_(spoken);
+    const result=await Promise.race([
+      serverPromise,
+      new Promise(resolve=>setTimeout(()=>resolve(null),QUESTION_TTS_WAIT_MS))
+    ]);
+
+    if(speechRunId!==myRun) return;
+    if(result&&result.src){
+      try{ await playAudio_(result.src,listenAfter,spoken); return; }
+      catch(e){}
+    }
+  }catch(e){}
+
+  if(speechRunId!==myRun) return;
+  fallbackSpeech_(spoken,listenAfter);
 }
 
 function prefetchQuestionTts_(text){
@@ -700,9 +893,12 @@ function createRecognition_(){
     lastSpeechAt=Date.now();
     clearTimeout(silenceTimer);
 
-    // During the initial Story there is NO correction, Gemini call, or CRM
-    // decision-making. The transcript is collected exactly as speech arrives.
-    // Correction/extraction happens only after the user presses Finish & Save.
+    // Live correction is a separate, asynchronous DISPLAY-ONLY pipeline.
+    // It never controls the Story boundary, never asks CRM questions, and never
+    // blocks Speech Recognition.
+    if(currentMode==='call' && newestFinal){
+      queueLiveCorrection_(newestFinal);
+    }
     render();
 
     // Silence starts only AFTER actual recognition text exists.
@@ -778,8 +974,10 @@ function createRecognition_(){
     // the best available text. Preserve it before restarting so the beginning
     // of a Story/answer is not silently lost.
     if(shouldKeepListening && !processing && turnInterim){
-      turnFinal=mergeSpeechText_(turnFinal,turnInterim);
+      const carry=turnInterim;
+      turnFinal=mergeSpeechText_(turnFinal,carry);
       turnInterim='';
+      if(currentMode==='call') queueLiveCorrection_(carry);
       render();
     }
 
@@ -867,6 +1065,10 @@ function startSession(){
   currentMode='call';
   questionText='';
   questionIntroPlayed=false;
+  clearLiveCorrection_();
+  liveCorrectionSession=makeSession_();
+  primeSpeechOutput_();
+  primeAudioOutput_();
 
   // Every Start Voice begins a brand-new Story. Never carry the previous
   // saved feedback into the next call UI or transcript.
@@ -883,8 +1085,8 @@ function startSession(){
   $('stopBtn').disabled=false;
 
   $('modeTitle').textContent='Preparing microphone';
-  $('modeText').textContent='استنى ثانية واحدة. أول ما أقول Listening ابدأ كلامك. أنا هجمع الـstory كلها ومش هسألك أي سؤال أثناء الـstory.';
-  status('بجهز الميكروفون... ابدأ الكلام فقط بعد ما يظهر Listening. زر Finish & Save متاح من دلوقتي.');
+  $('modeText').textContent='استنى لحد ما يظهر Listening. بعد كده اتكلم براحتك؛ Gemini هيصحح الكلام في الخلفية من غير ما يقاطعك أو يسألك.';
+  status('بجهز الميكروفون... أول ما يظهر Listening ابدأ الكلام.');
 
   // Reset all per-call async guards. A previous failed request must never block
   // a brand-new Story.
@@ -927,6 +1129,16 @@ function finishTurn_(reason){
   speechActive=false;
   clearTurnTimers_();
   clearRecognitionWatchdogs_();
+
+  // Capture a completed live correction BEFORE clearing its async state.
+  // Otherwise Finish & Save would erase the correction and always fall back
+  // to the raw Story even when Gemini had already corrected the full turn.
+  const correctedReadyAtFinish = currentMode==='call' &&
+    !!liveCorrectedText && !liveCorrectionInFlight &&
+    !liveCorrectionPending && liveCorrectionRawSent === turnFinal;
+  const correctedStoryAtFinish = correctedReadyAtFinish ? liveCorrectedText : '';
+
+  clearLiveCorrection_();
   stopMicPreflight_();
 
   try{ if(recognition) recognition.abort(); }catch(e){}
@@ -987,7 +1199,13 @@ function finishTurn_(reason){
     return;
   }
 
-  conversation.push('FEEDBACK: '+t);
+  // If the latest background correction is complete and corresponds to the
+  // entire finalized Story, send that corrected Story to CRM as the FEEDBACK.
+  // This means a correction such as "40 to 50" -> "40 million to 50 million"
+  // is not merely visual; it is also available to the deterministic fallback
+  // if final Gemini extraction is temporarily unavailable. If correction is
+  // still pending/in-flight, keep the raw Story and let final extraction handle it.
+  conversation.push('FEEDBACK: '+(correctedStoryAtFinish || t));
   render();
   processConversation().catch(err=>{
     window.__mgRequestBusy=false;
@@ -1163,7 +1381,7 @@ async function processConversation(){
     }
 
     if(!result || result.retry){
-      throw new Error('CRM is taking longer than expected. The save is still running in the background. Wait a little, then check the CRM result.');
+      throw new Error('الحفظ لسه شغال في الخلفية. ما تعيدش المكالمة ولا تضغط Finish مرة تانية؛ افتح الـCRM بعد دقيقة للتأكد من النتيجة.');
     }
 
     handleResult(result);
@@ -1307,7 +1525,7 @@ function arabicQuestion(data){
   if(data.question) return data.question;
   if(data.type==='PHONE_REQUIRED') return 'تمام، قولّي رقم الموبايل رقم رقم، وخد وقتك وأنا مستنيك تخلص.';
   if(data.type==='PHONE_CONFIRMATION_REQUIRED') return data.question||'أنا فهمت رقم الموبايل. الرقم ده صح؟';
-  if(data.type==='NEW_CLIENT_MISSING_DATA') return 'تمام، ناقصني شوية بيانات بسيطة. هسألك عليهم واحدة واحدة.';
+  if(data.type==='NEW_CLIENT_MISSING_DATA') return 'تمام، قولّي اسم العميل.';
   if(data.type==='SOURCE_REQUIRED') return 'تمام، الليد ده جالك منين؟ Element، Direct، Adel، FB، Cold Call، ولا Refell؟';
   if(data.type==='CLIENT_NOT_FOUND') return 'مش قادر أحدد الليد. قولّي اسم العميل أو آخر أربع أرقام من الموبايل.';
   if(data.type==='MULTIPLE_CLIENTS') return data.message||'لقيت أكتر من تطابق. قولّي اسم العميل أو آخر أربع أرقام من الموبايل.';
@@ -1354,7 +1572,7 @@ function handleResult(data){
 
   const q=arabicQuestion(data);
   if(q){
-    status('تمام، نكمّل بالمعلومة الناقصة...');
+    status('تمام، نكمّل بالمعلومة الناقصة... بشغّل السؤال صوتيًا.');
     ask(q);
     return;
   }
@@ -1412,6 +1630,7 @@ function ask(text){
 
   // Warm the server TTS cache without blocking the conversation.
   prefetchQuestionTts_(spoken);
+  status('السؤال جاهز. بشغّل الصوت...');
   speakQuestionIntroThen_(spoken);
 }
 
@@ -1424,6 +1643,7 @@ function reset(){
 
   try{if(recognition) recognition.abort();}catch(e){}
   try{speechSynthesis.cancel();}catch(e){}
+  stopCurrentSpeechOutput_();
   stopVAD_();
 
   recognition=null;
@@ -1446,6 +1666,7 @@ function reset(){
   phoneAttempts=0;
   questionIntroPlayed=false;
   newLeadIntroPending=false;
+  clearLiveCorrection_();
 
   $('question').classList.add('hidden');
   $('startBtn').disabled=false;
