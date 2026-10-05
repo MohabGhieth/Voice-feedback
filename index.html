@@ -22,7 +22,7 @@
 <button id="resetBtn" class="reset" type="button">↺ Reset</button>
 </div>
 <div id="status" class="status"></div><div id="error" class="error hidden"></div>
-<div class="tip">One page only. The microphone recording is the authoritative Story source. Browser Speech Recognition is only a live preview; the original audio is transcribed at Finish & Save with Gemini 3.5 Transcribe Smart for Arabic Egypt + English real-estate terms, including spoken self-corrections. CRM questions start only after the Story is finalized.</div>
+<div class="tip">One page only. The microphone recording starts before the live preview and is the authoritative Story source. Browser Speech Recognition is optional and only a live preview; the original audio is transcribed at Finish & Save with Gemini 3.5 Transcribe Smart for Arabic Egypt + English real-estate terms, including spoken self-corrections. CRM questions start only after the Story is finalized.</div>
 </section>
 </main>
 <script>
@@ -54,6 +54,9 @@ let audioRecorderMimeType='';
 let authoritativeAudioBlob=null;
 let authoritativeTranscript='';
 let audioRecordingStartedAt=0;
+let audioRecordingStoppedAt=0;
+let audioRecordingReadyPromise=null;
+let audioRecordingReady=false;
 let audioRecordingStopped=false;
 let recognitionStartTimer=null;
 let recognitionStartAttempts=0;
@@ -346,78 +349,46 @@ function pickRecorderMimeType_(){
 }
 
 async function startAuthoritativeRecording_(){
-  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-    throw new Error('This browser cannot access the microphone.');
-  }
-  if(!window.MediaRecorder){
-    throw new Error('This browser does not support secure audio recording.');
-  }
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('This browser cannot access the microphone.');
+  if(!window.MediaRecorder) throw new Error('This browser does not support secure audio recording.');
   stopAuthoritativeRecording_();
   const mime=pickRecorderMimeType_();
   const constraints={audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false};
-  audioRecorderStream=await navigator.mediaDevices.getUserMedia(constraints);
-  audioRecorderMimeType=mime || audioRecorderStream.getAudioTracks()[0]?.getSettings?.().mimeType || 'audio/mp4';
-  audioRecorderChunks=[];
-  authoritativeAudioBlob=null;
-  authoritativeTranscript='';
-  audioRecordingStopped=false;
-  audioRecordingStartedAt=Date.now();
-
-  const options=audioRecorderMimeType ? {mimeType:audioRecorderMimeType,audioBitsPerSecond:64000} : {audioBitsPerSecond:64000};
-  audioRecorder=new MediaRecorder(audioRecorderStream,options);
-  audioRecorder.ondataavailable=e=>{ if(e.data&&e.data.size) audioRecorderChunks.push(e.data); };
-  audioRecorder.onerror=e=>{ showError('Audio recording error: '+(e.error?.message||e.error?.name||'unknown')); };
-  audioRecorder.start(1000);
-  status('🎙️ بسجّل الصوت الأصلي بجودة عالية... الـpreview اللي ظاهر مجرد معاينة.');
+  audioRecordingReady=false;
+  audioRecordingReadyPromise=(async()=>{
+    audioRecorderStream=await navigator.mediaDevices.getUserMedia(constraints);
+    const track=audioRecorderStream.getAudioTracks()[0];
+    audioRecorderMimeType=mime || track?.getSettings?.().mimeType || 'audio/mp4';
+    audioRecorderChunks=[]; authoritativeAudioBlob=null; authoritativeTranscript=''; audioRecordingStopped=false; audioRecordingStoppedAt=0;
+    const options=audioRecorderMimeType ? {mimeType:audioRecorderMimeType,audioBitsPerSecond:64000} : {audioBitsPerSecond:64000};
+    audioRecorder=new MediaRecorder(audioRecorderStream,options);
+    audioRecorder.ondataavailable=e=>{if(e.data&&e.data.size) audioRecorderChunks.push(e.data);};
+    audioRecorder.onerror=e=>{showError('Audio recording error: '+(e.error?.message||e.error?.name||'unknown'));};
+    audioRecorder.start(250); audioRecordingStartedAt=Date.now(); audioRecordingReady=true;
+    status('🔴 Recording — اتكلم براحتك. التسجيل الأصلي بدأ بالفعل.'); return true;
+  })();
+  try{return await audioRecordingReadyPromise;}catch(err){audioRecordingReady=false; audioRecordingReadyPromise=null; throw err;}
 }
-
 function stopAuthoritativeRecording_(){
-  audioRecordingStopped=true;
-  const recorder=audioRecorder;
-  if(recorder){
-    try{ if(recorder.state!=='inactive') recorder.stop(); }catch(e){}
-  }
-  if(audioRecorderStream){
-    try{audioRecorderStream.getTracks().forEach(t=>t.stop());}catch(e){}
-  }
-  audioRecorderStream=null;
+  audioRecordingStopped=true; audioRecordingStoppedAt=Date.now();
+  const recorder=audioRecorder; if(recorder){try{if(recorder.state!=='inactive') recorder.stop();}catch(e){}}
+  if(audioRecorderStream){try{audioRecorderStream.getTracks().forEach(t=>t.stop());}catch(e){}} audioRecorderStream=null;
 }
-
 function waitForRecorderBlob_(){
   return new Promise((resolve,reject)=>{
-    if(authoritativeAudioBlob){ resolve(authoritativeAudioBlob); return; }
-    const recorder=audioRecorder;
-    if(!recorder && !audioRecorderChunks.length){ reject(new Error('The original audio recording was not captured.')); return; }
-
-    let settled=false;
     const finish=()=>{
-      if(settled) return;
-      settled=true;
-      const blob=new Blob(audioRecorderChunks,{type:audioRecorderMimeType||'audio/mp4'});
-      audioRecorder=null;
-      if(!blob.size){ reject(new Error('The original audio recording is empty.')); return; }
-      authoritativeAudioBlob=blob;
-      resolve(blob);
+      if(authoritativeAudioBlob){resolve(authoritativeAudioBlob);return;}
+      const blob=new Blob(audioRecorderChunks,{type:audioRecorderMimeType||'audio/mp4'}); audioRecorder=null;
+      if(!blob.size){reject(new Error('The original audio recording is empty.'));return;}
+      authoritativeAudioBlob=blob; const durationMs=Math.max(0,(audioRecordingStoppedAt||Date.now())-(audioRecordingStartedAt||Date.now()));
+      if(durationMs<700){reject(new Error('The original recording is too short. Please record again.'));return;} resolve(blob);
     };
-
-    if(recorder && recorder.state!=='inactive'){
-      const old=recorder.onstop;
-      recorder.onstop=()=>{ try{if(old) old();}catch(e){} finish(); };
-      try{recorder.stop();}catch(e){reject(e);}
-    }else{
-      // Give the recorder's final dataavailable event a short chance to arrive.
-      setTimeout(finish,120);
-    }
+    const afterReady=()=>{const recorder=audioRecorder; if(!recorder&&!audioRecorderChunks.length){reject(new Error('The original audio recording was not captured.'));return;} if(recorder&&recorder.state!=='inactive'){const old=recorder.onstop; recorder.onstop=()=>{try{if(old)old();}catch(e){} finish();}; try{recorder.stop();}catch(e){reject(e);}}else setTimeout(finish,250);};
+    if(audioRecordingReadyPromise) audioRecordingReadyPromise.then(afterReady).catch(reject); else afterReady();
   });
 }
-
 function dataUrlFromBlob_(blob){
-  return new Promise((resolve,reject)=>{
-    const reader=new FileReader();
-    reader.onload=()=>resolve(String(reader.result||''));
-    reader.onerror=()=>reject(reader.error||new Error('Could not read audio recording.'));
-    reader.readAsDataURL(blob);
-  });
+  return new Promise((resolve,reject)=>{const reader=new FileReader(); reader.onload=()=>resolve(String(reader.result||'')); reader.onerror=()=>reject(reader.error||new Error('Could not read audio recording.')); reader.readAsDataURL(blob);});
 }
 
 function primeSpeechOutput_(){
@@ -1235,54 +1206,26 @@ function startListening_(newTurn){
   shouldKeepListening=true;
   isListening=false;
 
+  $('modeTitle').textContent=currentMode==='answer' ? 'Listening for Answer' : 'Preparing microphone';
+  $('startBtn').disabled=true; $('stopBtn').disabled=true;
+  status(currentMode==='answer' ? 'Listening for your answer... خد وقتك، وأنا مستنيك تخلص.' : 'بجهّز التسجيل الأصلي... ابدأ الكلام فقط لما يظهر 🔴 Recording.');
+  const beginPreview=()=>{
+    if(currentMode==='call' && !audioRecordingReady){shouldKeepListening=false; $('startBtn').disabled=false; $('stopBtn').disabled=true; showError('The original microphone recording did not start. Nothing was saved.'); return;}
+    $('modeTitle').textContent=currentMode==='answer' ? 'Listening for Answer' : 'Listening'; $('stopBtn').disabled=false;
+    status(currentMode==='answer' ? 'Listening for your answer... خد وقتك، وأنا مستنيك تخلص.' : '🔴 Recording — اتكلم براحتك. أنا مش هوقف الـstory بسبب أي سكتة. لما تخلص اضغط Finish & Save.');
+    if(C){try{recognition=createRecognition_(); recognition.start(); armRecognitionStartWatchdog_();}catch(e){recognition=null; status('🔴 Recording — الـpreview مش متاح، لكن التسجيل الأصلي شغال. كمّل عادي.');}}
+    else if(currentMode==='call') status('🔴 Recording — الـpreview مش متاح، لكن التسجيل الأصلي شغال. كمّل عادي.');
+  };
   if(currentMode==='call' && newTurn){
-    startAuthoritativeRecording_().catch(err=>{
-      // Recording is required for the authoritative Story path. If unavailable,
-      // stop before silently falling back to a lower-quality transcript.
-      shouldKeepListening=false;
-      isListening=false;
-      stopAuthoritativeRecording_();
-      try{ if(recognition) recognition.abort(); }catch(e){}
-      $('startBtn').disabled=false;
-      $('stopBtn').disabled=true;
-      showError(err.message||String(err));
-      status('');
-    });
-  }
-
-  $('modeTitle').textContent=currentMode==='answer' ? 'Listening for Answer' : 'Listening';
-  $('startBtn').disabled=true;
-  $('stopBtn').disabled=false;
-
-  status(currentMode==='answer'
-    ? 'Listening for your answer... خد وقتك، وأنا مستنيك تخلص.'
-    : 'Listening... اتكلم براحتك. أنا مش هوقف الـstory بسبب أي سكتة. لما تخلص اضغط Finish & Save.');
-
-  // SpeechRecognition is the only active microphone consumer.
-  try{
-    recognition=createRecognition_();
-    recognition.start();
-    armRecognitionStartWatchdog_();
-  }catch(e){
-    shouldKeepListening=false;
-    isListening=false;
-    clearRecognitionWatchdogs_();
-    $('startBtn').disabled=false;
-    $('stopBtn').disabled=true;
-    showError('Could not start Speech Recognition: '+(e.message||String(e)));
-    status('');
-  }
+    startAuthoritativeRecording_().then(beginPreview).catch(err=>{shouldKeepListening=false; isListening=false; stopAuthoritativeRecording_(); try{if(recognition)recognition.abort();}catch(e){} $('startBtn').disabled=false; $('stopBtn').disabled=true; showError(err.message||String(err)); status('');});
+  }else beginPreview();
 }
 
 function startSession(){
   clearError();
 
   const C=ctor();
-
-  if(!C){
-    showError('Speech Recognition is not available in this browser. Use current Chrome or Edge.');
-    return;
-  }
+  // SpeechRecognition is preview-only; authoritative audio does not depend on it.
 
   // IMPORTANT: start SpeechRecognition directly from the button click.
   // Do not await getUserMedia or any network operation first; keep the browser
@@ -1523,7 +1466,8 @@ function fireVoiceProcess_(session){
 async function sendAuthoritativeAudio_(session,base64,mimeType){
   // Apps Script POST is intentionally fire-and-poll: GitHub Pages cannot read
   // the cross-origin response reliably, but the request itself reaches doPost.
-  const payload=JSON.stringify({api:'voiceAudio',session:session,mimeType:String(mimeType||'audio/mp4'),base64:base64});
+  const durationMs=Math.max(0,(audioRecordingStoppedAt||Date.now())-(audioRecordingStartedAt||Date.now()));
+  const payload=JSON.stringify({api:'voiceAudio',session:session,mimeType:String(mimeType||'audio/mp4'),base64:base64,durationMs:durationMs});
   await fetch(API,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:payload});
 }
 
@@ -1577,6 +1521,8 @@ async function processConversation(){
       const base64=String(dataUrl).split(',')[1]||'';
       if(!base64) throw new Error('The original audio recording could not be prepared.');
       if(base64.length>28000000) throw new Error('The recording is too large. Finish shorter calls or use the manual text fallback.');
+      const recordedDurationMs=Math.max(0,(audioRecordingStoppedAt||Date.now())-(audioRecordingStartedAt||Date.now()));
+      if(recordedDurationMs<700) throw new Error('The original recording is too short. Nothing was saved.');
 
       await sendAuthoritativeAudio_(session,base64,authoritativeAudioBlob.type||audioRecorderMimeType||'audio/mp4');
       status('التسجيل الأصلي وصل. Gemini بيحوّل القصة لنص وبيصلّح الـself-corrections...');
