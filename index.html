@@ -11,7 +11,7 @@
 </head>
 <body>
 <main class="app">
-<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — V36.9 Hardened Async / Background Transcription</p></div>
+<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — V36.14 Semantic Brain Hardened / Background Transcription</p></div>
 <section class="card">
 <div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically and keeps your full paragraph.</span><div class="stage" id="stage"><span data-stage="recording">Recording</span><span data-stage="upload">Upload</span><span data-stage="transcribe">Transcribe</span><span data-stage="ai">AI Analysis</span><span data-stage="save">Save CRM</span></div></div>
 <div id="question" class="question hidden"><small>CRM asks:</small><strong id="questionText"></strong></div>
@@ -51,6 +51,7 @@ let mediaRecorder=null;
 let audioParts=[];
 let audioMimeType='audio/webm';
 let audioTurnCounter=0;
+let iosSpeechFallback=false;
 
 let turnFinal='';
 let turnInterim='';
@@ -155,6 +156,12 @@ function render(){
 
 function ctor(){
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
+function isIOSMicrophoneCompatibilityMode_(){
+  const ua=String(navigator.userAgent||'');
+  const platform=String(navigator.platform||'');
+  return /iPhone|iPad|iPod/i.test(ua) || (platform==='MacIntel' && navigator.maxTouchPoints>1);
 }
 
 function arabicVoice(){
@@ -687,44 +694,67 @@ function startListening_(newTurn){
   shouldKeepListening=true;
   isListening=false;
 
-  ensureMediaRecorder_().catch(err=>{
+  ensureMediaRecorder_().then(()=>{
+    if(!shouldKeepListening || processing) return;
+
+    $('modeTitle').textContent=currentMode==='answer' ? 'Listening for Answer' : 'Listening';
+    setStage_('recording');
+    $('startBtn').disabled=true;
+    $('stopBtn').disabled=false;
+
+    if(iosSpeechFallback){
+      // iOS Safari/WebKit can reject SpeechRecognition with audio-capture while
+      // MediaRecorder owns the microphone. On iOS the authoritative recorder
+      // therefore owns the microphone exclusively; Gemini supplies the transcript
+      // after Finish & Save. This is an intentional compatibility fallback.
+      isListening=false;
+      status(currentMode==='answer'
+        ? 'iPhone/iPad mode: recording your answer. اضغط Finish & Save لما تخلص.'
+        : 'iPhone/iPad mode: recording original audio. اضغط Finish & Save لما تخلص.');
+      $('modeText').textContent='على iPhone/iPad التسجيل الأصلي هو المصدر الأساسي. المعاينة الصوتية المباشرة متوقفة لتجنب تعارض الميكروفون.';
+      return;
+    }
+
+    status(currentMode==='answer'
+      ? 'Listening for your answer... خد وقتك، وأنا مستنيك تخلص.'
+      : 'Listening... Speak naturally.');
+
+    // SpeechRecognition is the live-preview consumer on browsers where the
+    // browser permits it alongside the authoritative MediaRecorder.
+    try{
+      recognition=createRecognition_();
+      recognition.start();
+      armRecognitionStartWatchdog_();
+    }catch(e){
+      shouldKeepListening=false;
+      isListening=false;
+      clearRecognitionWatchdogs_();
+      $('startBtn').disabled=false;
+      $('stopBtn').disabled=true;
+      showError('Could not start Speech Recognition: '+(e.message||String(e)));
+      status('');
+    }
+  }).catch(err=>{
     shouldKeepListening=false;
     $('startBtn').disabled=false;
     $('stopBtn').disabled=true;
     showError('Microphone recording could not start: '+(err&&err.message||String(err)));
-  });
-
-  $('modeTitle').textContent=currentMode==='answer' ? 'Listening for Answer' : 'Listening';
-  setStage_('recording');
-  $('startBtn').disabled=true;
-  $('stopBtn').disabled=false;
-
-  status(currentMode==='answer'
-    ? 'Listening for your answer... خد وقتك، وأنا مستنيك تخلص.'
-    : 'Listening... Speak naturally.');
-
-  // SpeechRecognition is the only active microphone consumer.
-  try{
-    recognition=createRecognition_();
-    recognition.start();
-    armRecognitionStartWatchdog_();
-  }catch(e){
-    shouldKeepListening=false;
-    isListening=false;
-    clearRecognitionWatchdogs_();
-    $('startBtn').disabled=false;
-    $('stopBtn').disabled=true;
-    showError('Could not start Speech Recognition: '+(e.message||String(e)));
     status('');
-  }
+  });
 }
 
 async function ensureMediaRecorder_(){
   if(mediaRecorder && mediaRecorder.state==='recording') return;
-  if(!mediaStream){
-    mediaStream=await navigator.mediaDevices.getUserMedia({audio:true});
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    throw new Error('This browser does not expose microphone recording.');
   }
-  const preferred=['audio/webm;codecs=opus','audio/webm','audio/mp4'];
+  if(!mediaStream){
+    mediaStream=await navigator.mediaDevices.getUserMedia({
+      audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},
+      video:false
+    });
+  }
+  const preferred=['audio/mp4','audio/webm;codecs=opus','audio/webm'];
   const chosen=preferred.find(t=>window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
   audioMimeType=chosen||'audio/webm';
   audioParts=[];
@@ -733,11 +763,25 @@ async function ensureMediaRecorder_(){
   mediaRecorder.start();
 }
 
+function releaseMediaRecorderStream_(){
+  try{ if(mediaStream) mediaStream.getTracks().forEach(t=>t.stop()); }catch(e){}
+  mediaStream=null;
+  mediaRecorder=null;
+}
+
 function stopMediaRecorder_(){
   return new Promise(resolve=>{
-    if(!mediaRecorder || mediaRecorder.state==='inactive') return resolve(new Blob(audioParts,{type:audioMimeType}));
+    if(!mediaRecorder || mediaRecorder.state==='inactive'){
+      const blob=new Blob(audioParts,{type:audioMimeType});
+      releaseMediaRecorderStream_();
+      return resolve(blob);
+    }
     const r=mediaRecorder;
-    const done=()=>resolve(new Blob(audioParts,{type:r.mimeType||audioMimeType}));
+    const done=()=>{
+      const blob=new Blob(audioParts,{type:r.mimeType||audioMimeType});
+      releaseMediaRecorderStream_();
+      resolve(blob);
+    };
     r.addEventListener('stop',done,{once:true});
     try{r.stop();}catch(e){done();}
   });
@@ -810,8 +854,9 @@ function startSession(){
   clearError();
 
   const C=ctor();
+  iosSpeechFallback=isIOSMicrophoneCompatibilityMode_();
 
-  if(!C){
+  if(!C && !iosSpeechFallback){
     showError('Speech Recognition is not available in this browser. Use current Chrome or Edge.');
     return;
   }
@@ -876,6 +921,7 @@ async function finishTurn_(reason){
   try{ if(recognition) recognition.abort(); }catch(e){}
 
   const t=currentVoiceText_();
+  const hasAuthoritativeOnlyTurn=iosSpeechFallback;
 
   turnFinal='';
   turnInterim='';
@@ -890,7 +936,7 @@ async function finishTurn_(reason){
     ? (phoneMode ? 'خلصت الرقم. برفع التسجيل الأصلي...' : 'خلصت التسجيل. برفع التسجيل الأصلي...')
     : (phoneMode ? 'خلصت الرقم. برفع التسجيل الأصلي...' : 'خلصنا الكلام. برفع التسجيل الأصلي...'));
 
-  if(!t){
+  if(!t && !hasAuthoritativeOnlyTurn){
     processing=false;
     $('startBtn').disabled=false;
     status('مفيش كلام اتسجل.');
@@ -1344,6 +1390,7 @@ function reset(){
   recognitionStartAttempts=0;
   voiceEnabled=false;
   isListening=false;
+  iosSpeechFallback=false;
 
   turnFinal='';
   turnInterim='';
