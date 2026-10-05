@@ -45,6 +45,12 @@ let processing=false;
 let currentMode='call';
 let questionText='';
 let conversation=[];
+let logicalSession='';
+let mediaStream=null;
+let mediaRecorder=null;
+let audioParts=[];
+let audioMimeType='audio/webm';
+let audioTurnCounter=0;
 
 let turnFinal='';
 let turnInterim='';
@@ -246,6 +252,9 @@ async function startVAD_(){
     return true;
   }catch(e){
     stopVAD_();
+  try{ if(mediaRecorder&&mediaRecorder.state!=='inactive') mediaRecorder.stop(); }catch(e){}
+  try{ if(mediaStream) mediaStream.getTracks().forEach(t=>t.stop()); }catch(e){}
+  mediaRecorder=null; mediaStream=null; audioParts=[]; logicalSession='';
     return false;
   }
 }
@@ -676,6 +685,13 @@ function startListening_(newTurn){
   shouldKeepListening=true;
   isListening=false;
 
+  ensureMediaRecorder_().catch(err=>{
+    shouldKeepListening=false;
+    $('startBtn').disabled=false;
+    $('stopBtn').disabled=true;
+    showError('Microphone recording could not start: '+(err&&err.message||String(err)));
+  });
+
   $('modeTitle').textContent=currentMode==='answer' ? 'Listening for Answer' : 'Listening';
   $('startBtn').disabled=true;
   $('stopBtn').disabled=false;
@@ -700,6 +716,56 @@ function startListening_(newTurn){
   }
 }
 
+async function ensureMediaRecorder_(){
+  if(mediaRecorder && mediaRecorder.state==='recording') return;
+  if(!mediaStream){
+    mediaStream=await navigator.mediaDevices.getUserMedia({audio:true});
+  }
+  const preferred=['audio/webm;codecs=opus','audio/webm','audio/mp4'];
+  const chosen=preferred.find(t=>window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
+  audioMimeType=chosen||'audio/webm';
+  audioParts=[];
+  mediaRecorder=new MediaRecorder(mediaStream, chosen?{mimeType:chosen}:undefined);
+  mediaRecorder.ondataavailable=e=>{ if(e.data&&e.data.size) audioParts.push(e.data); };
+  mediaRecorder.start();
+}
+
+function stopMediaRecorder_(){
+  return new Promise(resolve=>{
+    if(!mediaRecorder || mediaRecorder.state==='inactive') return resolve(new Blob(audioParts,{type:audioMimeType}));
+    const r=mediaRecorder;
+    const done=()=>resolve(new Blob(audioParts,{type:r.mimeType||audioMimeType}));
+    r.addEventListener('stop',done,{once:true});
+    try{r.stop();}catch(e){done();}
+  });
+}
+
+async function uploadAuthoritativeTurn_(blob){
+  if(!blob || blob.size<100) throw new Error('Original microphone recording is empty.');
+  if(blob.size>12*1024*1024) throw new Error('Original microphone recording is larger than 12 MB for one turn.');
+  const turnId='t'+(++audioTurnCounter)+'_'+Date.now().toString(36);
+  const b64=await new Promise((resolve,reject)=>{
+    const fr=new FileReader();
+    fr.onload=()=>resolve(String(fr.result).split(',')[1]||'');
+    fr.onerror=()=>reject(new Error('Could not read the original audio.'));
+    fr.readAsDataURL(blob);
+  });
+  await fetch(API+'?api=voiceAudio',{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:JSON.stringify({session:logicalSession,turnId:turnId,mimeType:blob.type||audioMimeType,audioBase64:b64})});
+  for(let i=0;i<30;i++){
+    await new Promise(r=>setTimeout(r,500));
+    const st=await jsonpRequest({api:'voiceAudioStatus',session:logicalSession});
+    if(st && st.state==='stored' && st.turnId===turnId) break;
+    if(st && st.state==='error' && st.turnId===turnId) throw new Error(st.message||'Original audio upload failed.');
+  }
+  for(let i=0;i<60;i++){
+    const tr=await jsonpRequest({api:'voiceAudioTranscribe',session:logicalSession,turnId:turnId},30000);
+    if(tr && tr.state==='ready' && tr.transcript) return tr.transcript;
+    if(tr && tr.state==='error') throw new Error(tr.message||'Authoritative transcription failed.');
+    await new Promise(r=>setTimeout(r,1000));
+  }
+  throw new Error('Authoritative audio transcription timed out. The recording was preserved; do not repeat the call.');
+}
+
 function startSession(){
   clearError();
 
@@ -717,6 +783,8 @@ function startSession(){
   window.__mgStartBusy=true;
 
   voiceEnabled=true;
+  logicalSession=makeSession_();
+  audioTurnCounter=0;
   currentMode='call';
   questionText='';
   questionIntroPlayed=false;
@@ -751,7 +819,7 @@ function startSession(){
   }
 }
 
-function finishTurn_(reason){
+async function finishTurn_(reason){
   if(processing) return;
 
   processing=true;
@@ -786,8 +854,20 @@ function finishTurn_(reason){
     return;
   }
 
+  let authoritativeText='';
+  try{
+    const audioBlob=await stopMediaRecorder_();
+    status('التسجيل الأصلي محفوظ. بعمل transcription من الصوت نفسه...');
+    authoritativeText=await uploadAuthoritativeTurn_(audioBlob);
+  }catch(err){
+    processing=false; $('startBtn').disabled=false; $('stopBtn').disabled=true;
+    showError((err&&err.message)||String(err));
+    status('التسجيل الأصلي محفوظ قدر الإمكان. ما تعيدش المكالمة.');
+    return;
+  }
+
   if(currentMode==='answer' && phoneMode){
-    const digits=normalizeSpokenDigits_(t);
+    const digits=normalizeSpokenDigits_(authoritativeText);
 
     if(!validEgyptianMobileDigits_(digits)){
       processing=false;
@@ -813,12 +893,12 @@ function finishTurn_(reason){
   if(currentMode==='answer'){
     status('براجع الإجابة بسرعة...');
 
-    correctAnswerContext_(t).then(corrected=>{
+    correctAnswerContext_(authoritativeText).then(corrected=>{
       conversation.push('ANSWER: '+corrected);
       render();
       processConversation();
     }).catch(()=>{
-      conversation.push('ANSWER: '+t);
+      conversation.push('ANSWER: '+authoritativeText);
       render();
       processConversation();
     });
@@ -826,7 +906,7 @@ function finishTurn_(reason){
     return;
   }
 
-  conversation.push('FEEDBACK: '+t);
+  conversation.push('FEEDBACK: '+authoritativeText);
   render();
   processConversation();
 }
@@ -898,7 +978,7 @@ async function processConversation(){
 
   status('خلصنا الكلام. براجع المكالمة وبجهّز بيانات الليد...');
 
-  const session=makeSession_();
+  const session=logicalSession;
   const chunks=[];
 
   for(let i=0;i<transcript.length;i+=CHUNK_SIZE){
@@ -915,26 +995,12 @@ async function processConversation(){
       await Promise.all(batch);
     }
 
-    status('تمام، الكلام وصل. ببدأ تحليل الـAI...');
+    status('تمام، الكلام وصل. بثبّت البيانات...');
 
-    // The server may need time for Gemini + CRM writes. Do not make the user
-    // record again if the first response is slow. Retry the SAME session.
-    let result=null;
-    const maxProcessAttempts=4;
-
-    for(let attempt=0; attempt<maxProcessAttempts; attempt++){
-      status(attempt===0
-        ? 'الـAI بيحلل المكالمة وبيجهّز بيانات الليد...'
-        : 'لسه شغال على نفس التسجيل... مستني النتيجة بدون إعادة التسجيل.');
-
-      result=await jsonpRequest({api:'voiceProcess',session:session},90000);
-
-      if(result && result.retry){
-        await new Promise(resolve=>setTimeout(resolve,800));
-        continue;
-      }
-
-      break;
+    let result=await jsonpRequest({api:'voiceProcess',session:session},30000);
+    if(result&&result.retry){
+      await new Promise(resolve=>setTimeout(resolve,250));
+      result=await jsonpRequest({api:'voiceProcess',session:session},30000);
     }
 
     handleResult(result);
