@@ -11,7 +11,7 @@
 </head>
 <body>
 <main class="app">
-<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — V36.14 Semantic Brain Hardened / Background Transcription</p></div>
+<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — V36.16 Runtime Error Hardened / Background Transcription</p></div>
 <section class="card">
 <div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically and keeps your full paragraph.</span><div class="stage" id="stage"><span data-stage="recording">Recording</span><span data-stage="upload">Upload</span><span data-stage="transcribe">Transcribe</span><span data-stage="ai">AI Analysis</span><span data-stage="save">Save CRM</span></div></div>
 <div id="question" class="question hidden"><small>CRM asks:</small><strong id="questionText"></strong></div>
@@ -1028,7 +1028,7 @@ function jsonpRequest(params,timeoutMs=15000){
     }
 
     window[cb]=data=>finish(data,null);
-    script.onerror=()=>finish(null,new Error('CRM request failed.'));
+    script.onerror=()=>finish(null,new Error('CRM request failed for API: '+String(params.api||'unknown')+'. The server returned no executable JSONP response.'));
     script.src=API+'?'+q.toString();
     document.head.appendChild(script);
   });
