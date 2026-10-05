@@ -489,6 +489,11 @@ function ctor(){
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 }
 
+function isAppleMobile_(){
+  const ua=String(navigator.userAgent||'');
+  return /iPhone|iPad|iPod/i.test(ua) || (navigator.platform==='MacIntel' && Number(navigator.maxTouchPoints||0)>1);
+}
+
 function arabicVoice(){
   if(!('speechSynthesis' in window)) return null;
   return (speechSynthesis.getVoices()||[]).find(v=>/^ar(-|_)/i.test(v.lang||''))||null;
@@ -1044,7 +1049,19 @@ function scheduleRecognitionRestart_(reason){
       recognition.start();
       armRecognitionStartWatchdog_();
     }catch(e){
-      scheduleRecognitionRestart_('Speech Recognition retrying...');
+      recognitionStartAttempts++;
+      try{ if(recognition) recognition.abort(); }catch(_e){}
+      if(recognitionStartAttempts>=4){
+        shouldKeepListening=false;
+        isListening=false;
+        clearRecognitionWatchdogs_();
+        $('startBtn').disabled=false;
+        $('stopBtn').disabled=true;
+        showError('Speech Recognition could not restart after 4 attempts. The original recording is still safe. You can finish the Story.');
+        status('');
+        return;
+      }
+      scheduleRecognitionRestart_('Speech Recognition retrying ('+recognitionStartAttempts+'/4)...');
     }
   },450);
 }
@@ -1401,6 +1418,20 @@ function startListening_(newTurn){
     const C=ctor();
     $('modeTitle').textContent=currentMode==='answer' ? 'Listening for Answer' : 'Listening'; $('stopBtn').disabled=false;
     status(currentMode==='answer' ? 'Listening for your answer... خد وقتك، وأنا مستنيك تخلص.' : '🔴 Recording — اتكلم براحتك. أنا مش هوقف الـstory بسبب أي سكتة. لما تخلص اضغط Finish & Save.');
+
+    // iPhone/iPad Safari can reject SpeechRecognition when it is started after
+    // the async getUserMedia() step used by the authoritative recorder. The
+    // original audio is authoritative, so on Apple mobile we intentionally do
+    // NOT start the optional live preview during Story recording. This removes
+    // the source of the old `not-allowed` loop/error while preserving the full
+    // recording. SpeechRecognition remains available for CRM answers because
+    // those are started from an explicit user action.
+    if(currentMode==='call' && isAppleMobile_()){
+      recognition=null;
+      status('🔴 Recording — تسجيل القصة الأصلي شغال. المعاينة الصوتية المباشرة متوقفة على iPhone/iPad لتجنب مشاكل Safari؛ كمّل عادي واضغط Finish & Save لما تخلص.');
+      return;
+    }
+
     if(C){try{recognition=createRecognition_(); recognition.start(); armRecognitionStartWatchdog_();}catch(e){recognition=null; status('🔴 Recording — الـpreview مش متاح، لكن التسجيل الأصلي شغال. كمّل عادي.');}}
     else if(currentMode==='call') status('🔴 Recording — الـpreview مش متاح، لكن التسجيل الأصلي شغال. كمّل عادي.');
   };
@@ -1713,7 +1744,11 @@ async function processConversation(){
     status('البيانات اتعالجت بالفعل.');
     return;
   }
-  lastProcessedTranscriptHash=transcriptHash;
+  // Do not mark the turn as processed until the server returns a terminal
+  // result. A transient upload/Gemini/polling failure must leave the captured
+  // audio retryable; otherwise the user could be forced to repeat the Story.
+  // The hash is only committed immediately before handleResult(), after all
+  // retryable paths have been cleared.
 
   status(authoritativeAudioBlob ? 'خلصنا الكلام. برفع التسجيل الأصلي للـAI عشان يثبت الـStory بدقة...' : 'خلصنا الكلام. بثبّت البيانات بسرعة...');
 
@@ -1749,6 +1784,7 @@ async function processConversation(){
       authoritativeAudioBlob=null;
       audioRecorderChunks=[];
       audioRecorderMimeType='';
+      lastProcessedTranscriptHash=transcriptHash;
       handleResult(result);
       return;
     }catch(e){
@@ -1814,6 +1850,7 @@ async function processConversation(){
       throw new Error('الحفظ لسه شغال في الخلفية. ما تعيدش المكالمة ولا تضغط Finish مرة تانية؛ افتح الـCRM بعد دقيقة للتأكد من النتيجة.');
     }
 
+    lastProcessedTranscriptHash=transcriptHash;
     handleResult(result);
   }catch(e){
     window.__mgRequestBusy=false;
