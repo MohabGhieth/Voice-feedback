@@ -6,15 +6,15 @@
 <title>MG RESALE — Voice CRM</title>
 <style>
 :root{--bg:#07131a;--card:#0d2029;--text:#f4fbfd;--muted:#9eb5bc;--accent:#6ee7d8;--danger:#ff8f8f;--border:rgba(255,255,255,.1)}
-*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at top,#12303a 0%,var(--bg) 55%,#040b10 100%);color:var(--text);font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px 14px}.app{width:100%;max-width:680px}.brand{text-align:center;margin-bottom:16px}.brand h1{margin:0;font-size:30px}.brand p{margin:6px 0;color:var(--muted)}.card{background:rgba(13,32,41,.96);border:1px solid var(--border);border-radius:24px;padding:22px}.mode,.question{border-radius:15px;padding:14px 15px;background:rgba(255,255,255,.04);border:1px solid var(--border);margin-bottom:14px;line-height:1.5}.mode b{color:var(--accent)}.stage{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.stage span{padding:5px 8px;border-radius:999px;background:rgba(255,255,255,.05);color:var(--muted);font-size:11px}.stage span.active{color:var(--text);border:1px solid rgba(110,231,216,.35);background:rgba(110,231,216,.12)}.question{background:rgba(110,231,216,.10);border-color:rgba(110,231,216,.26)}.question small{display:block;color:var(--muted);margin-bottom:7px}.question strong{display:block;font-size:20px;line-height:1.45}.transcript{min-height:180px;white-space:pre-wrap;direction:auto;background:#07161d;border:1px solid var(--border);border-radius:16px;padding:14px;line-height:1.55;overflow-wrap:anywhere;margin-bottom:14px}.buttons{display:grid;grid-template-columns:1fr 1fr;gap:10px}button{border:0;border-radius:14px;padding:15px 12px;font-size:16px;font-weight:800;cursor:pointer}.start{background:var(--accent);color:#06211f}.stop{background:#6f2424;color:#fff}.reset{background:#17333d;color:#fff}button:disabled{opacity:.55;cursor:not-allowed}.status{min-height:24px;margin-top:13px;color:var(--muted);font-size:14px}.error{margin-top:12px;padding:12px 13px;border-radius:12px;color:#ffd7d7;background:rgba(140,31,31,.22);border:1px solid rgba(255,143,143,.28)}.hidden{display:none!important}.tip{color:var(--muted);font-size:12px;line-height:1.55;margin-top:13px}@media(max-width:500px){body{padding:12px 10px;align-items:flex-start}.card{padding:16px;margin-top:20px}.brand h1{font-size:27px}.buttons{grid-template-columns:1fr}}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at top,#12303a 0%,var(--bg) 55%,#040b10 100%);color:var(--text);font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;justify-content:center;padding:20px 14px}.app{width:100%;max-width:680px}.brand{text-align:center;margin-bottom:16px}.brand h1{margin:0;font-size:30px}.brand p{margin:6px 0;color:var(--muted)}.card{background:rgba(13,32,41,.96);border:1px solid var(--border);border-radius:24px;padding:22px}.mode,.question{border-radius:15px;padding:14px 15px;background:rgba(255,255,255,.04);border:1px solid var(--border);margin-bottom:14px;line-height:1.5}.mode b{color:var(--accent)}.stage{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.stage span{padding:5px 8px;border-radius:999px;background:rgba(255,255,255,.05);color:var(--muted);font-size:11px}.stage span.active{color:var(--text);border:1px solid rgba(110,231,216,.35);background:rgba(110,231,216,.12)}.question{background:rgba(110,231,216,.10);border-color:rgba(110,231,216,.26)}.question small{display:block;color:var(--muted);margin-bottom:7px}.question strong{display:block;font-size:20px;line-height:1.45}.phoneInput{margin-top:12px}.phoneInput input{width:100%;padding:14px 15px;border-radius:12px;border:1px solid rgba(110,231,216,.35);background:#07161d;color:var(--text);font-size:20px;font-weight:700;letter-spacing:1px;text-align:left;direction:ltr;outline:none}.phoneInput input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(110,231,216,.12)}.phoneInput button{width:100%;margin-top:9px;background:var(--accent);color:#06211f}.phoneHint{display:block;margin-top:7px;color:var(--muted);font-size:12px;line-height:1.45}.phoneError{margin-top:8px;color:#ffd7d7;font-size:13px}.transcript{min-height:180px;white-space:pre-wrap;direction:auto;background:#07161d;border:1px solid var(--border);border-radius:16px;padding:14px;line-height:1.55;overflow-wrap:anywhere;margin-bottom:14px}.buttons{display:grid;grid-template-columns:1fr 1fr;gap:10px}button{border:0;border-radius:14px;padding:15px 12px;font-size:16px;font-weight:800;cursor:pointer}.start{background:var(--accent);color:#06211f}.stop{background:#6f2424;color:#fff}.reset{background:#17333d;color:#fff}button:disabled{opacity:.55;cursor:not-allowed}.status{min-height:24px;margin-top:13px;color:var(--muted);font-size:14px}.error{margin-top:12px;padding:12px 13px;border-radius:12px;color:#ffd7d7;background:rgba(140,31,31,.22);border:1px solid rgba(255,143,143,.28)}.hidden{display:none!important}.tip{color:var(--muted);font-size:12px;line-height:1.55;margin-top:13px}@media(max-width:500px){body{padding:12px 10px;align-items:flex-start}.card{padding:16px;margin-top:20px}.brand h1{font-size:27px}.buttons{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <main class="app">
-<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — FINAL / Gemini Live Transcription / Authoritative Audio</p></div>
+<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — V36.29 Phone Input + Voice Fallback + Chunk ACK + AI Correction</p></div>
 <section class="card">
-<div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. Gemini Live transcribes while you speak; Finish & Save never waits for file transcription.</span><div class="stage" id="stage"><span data-stage="recording">Recording</span><span data-stage="upload">Upload</span><span data-stage="transcribe">Transcribe</span><span data-stage="ai">AI Analysis</span><span data-stage="save">Save CRM</span></div></div>
-<div id="question" class="question hidden"><small>CRM asks:</small><strong id="questionText"></strong></div>
+<div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically and keeps your full paragraph.</span><div class="stage" id="stage"><span data-stage="recording">Recording</span><span data-stage="upload">Upload</span><span data-stage="transcribe">Transcribe</span><span data-stage="ai">AI Analysis</span><span data-stage="save">Save CRM</span></div></div>
+<div id="question" class="question hidden"><small>CRM asks:</small><strong id="questionText"></strong><div id="phoneInputWrap" class="phoneInput hidden"><input id="phoneInput" type="tel" inputmode="tel" autocomplete="tel" placeholder="010 1234 5678" aria-label="Phone number"><button id="phoneSubmitBtn" type="button">Use This Number</button><span class="phoneHint">مش عايز تقوله صوت؟ اكتب الرقم هنا. مثال: 01012345678 أو +201012345678</span><div id="phoneInputError" class="phoneError"></div></div></div>
 <div id="transcript" class="transcript">No speech captured yet.</div>
 <div class="buttons">
 <button id="startBtn" class="start" type="button">🎙️ Start Voice</button>
@@ -22,10 +22,11 @@
 <button id="resetBtn" class="reset" type="button">↺ Reset</button>
 </div>
 <div id="status" class="status"></div><div id="error" class="error hidden"></div>
-<div class="tip">One page only. No popup. GitHub Pages owns the microphone and Gemini Live stream; Apps Script owns secure token provisioning, audio archive, CRM/Gemini/Sheets.</div>
+<div class="tip">One page only. No popup. GitHub Pages owns Speech Recognition; Apps Script owns CRM/Gemini/Sheets. Live speech and AI correction stay visible while you speak.</div>
 </section>
 </main>
 <script>
+// V36.29: phone manual-input fallback + voice digit fallback.
 const API='https://script.google.com/macros/s/AKfycbyawltTbaWy291FyF95S0GX6oIlnoac5FzDVxFdDSqUG3VyRoTItG4Mj8zZolxRN_GIjw/exec';
 const SILENCE_MS=3000;
 const ANSWER_SILENCE_MS=15000;
@@ -51,22 +52,6 @@ let mediaRecorder=null;
 let audioParts=[];
 let audioMimeType='audio/webm';
 let audioTurnCounter=0;
-let iosSpeechFallback=false;
-
-// Gemini Live transcription state. The browser receives only a short-lived
-// ephemeral token; the permanent Gemini API key stays in Apps Script.
-let liveSocket=null;
-let liveReady=false;
-let liveAudioContext=null;
-let liveSourceNode=null;
-let liveProcessorNode=null;
-let liveSilentGain=null;
-let livePcmBuffer=[];
-let livePcmLength=0;
-let liveStreamStartedAt=0;
-let lastLiveTranscriptAt=0;
-let liveCloseRequested=false;
-let liveFinishWaiters=[];
 
 let turnFinal='';
 let turnInterim='';
@@ -90,6 +75,7 @@ let inactivityTimer=null;
 let restartTimer=null;
 let phoneMode=false;
 let phoneAttempts=0;
+let manualPhoneSubmitting=false;
 
 let liveCorrectionTimer=null;
 let liveCorrectionSeq=0;
@@ -171,12 +157,6 @@ function render(){
 
 function ctor(){
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
-}
-
-function isIOSMicrophoneCompatibilityMode_(){
-  const ua=String(navigator.userAgent||'');
-  const platform=String(navigator.platform||'');
-  return /iPhone|iPad|iPod/i.test(ua) || (platform==='MacIntel' && navigator.maxTouchPoints>1);
 }
 
 function arabicVoice(){
@@ -678,25 +658,76 @@ function createRecognition_(){
   return r;
 }
 
-async function ensureMediaStream_(){
-  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-    throw new Error('This browser does not expose microphone recording.');
+function startListening_(newTurn){
+  clearError();
+  clearTurnTimers_();
+
+  if(!voiceEnabled){
+    startSession();
+    return;
   }
-  if(!mediaStream){
-    mediaStream=await navigator.mediaDevices.getUserMedia({
-      audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},
-      video:false
-    });
+
+  if(processing) return;
+
+  if(newTurn){
+    turnFinal='';
+    turnInterim='';
+    correctedLiveText='';
+    speechActive=false;
+    heardSpeech=false;
+    lastSpeechAt=0;
+    lastAudibleAt=0;
+    phoneAttempts=0;
+
+    if(currentMode==='call'){
+      liveCorrectionSeq++;
+    }
+
+    render();
   }
-  return mediaStream;
+
+  shouldKeepListening=true;
+  isListening=false;
+
+  ensureMediaRecorder_().catch(err=>{
+    shouldKeepListening=false;
+    $('startBtn').disabled=false;
+    $('stopBtn').disabled=true;
+    showError('Microphone recording could not start: '+(err&&err.message||String(err)));
+  });
+
+  $('modeTitle').textContent=currentMode==='answer' ? 'Listening for Answer' : 'Listening';
+  setStage_('recording');
+  $('startBtn').disabled=true;
+  $('stopBtn').disabled=false;
+
+  status(currentMode==='answer'
+    ? 'Listening for your answer... خد وقتك، وأنا مستنيك تخلص.'
+    : 'Listening... Speak naturally.');
+
+  // SpeechRecognition is the only active microphone consumer.
+  try{
+    recognition=createRecognition_();
+    recognition.start();
+    armRecognitionStartWatchdog_();
+  }catch(e){
+    shouldKeepListening=false;
+    isListening=false;
+    clearRecognitionWatchdogs_();
+    $('startBtn').disabled=false;
+    $('stopBtn').disabled=true;
+    showError('Could not start Speech Recognition: '+(e.message||String(e)));
+    status('');
+  }
 }
 
-function startMediaRecorder_(){
+async function ensureMediaRecorder_(){
   if(mediaRecorder && mediaRecorder.state==='recording') return;
-  if(!mediaStream) throw new Error('Microphone stream is not ready.');
-  const preferred=['audio/mp4','audio/webm;codecs=opus','audio/webm'];
+  if(!mediaStream){
+    mediaStream=await navigator.mediaDevices.getUserMedia({audio:true});
+  }
+  const preferred=['audio/webm;codecs=opus','audio/webm','audio/mp4'];
   const chosen=preferred.find(t=>window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
-  if(!window.MediaRecorder) throw new Error('MediaRecorder is not available in this browser.');
   audioMimeType=chosen||'audio/webm';
   audioParts=[];
   mediaRecorder=new MediaRecorder(mediaStream, chosen?{mimeType:chosen}:undefined);
@@ -704,43 +735,200 @@ function startMediaRecorder_(){
   mediaRecorder.start();
 }
 
-async function ensureMediaRecorder_(){
-  await ensureMediaStream_();
-  startMediaRecorder_();
-}
-
-function releaseMediaRecorderStream_(){
-  try{ if(mediaStream) mediaStream.getTracks().forEach(t=>t.stop()); }catch(e){}
-  mediaStream=null;
-  mediaRecorder=null;
-}
-
 function stopMediaRecorder_(){
   return new Promise(resolve=>{
-    if(!mediaRecorder || mediaRecorder.state==='inactive'){
-      const blob=new Blob(audioParts,{type:audioMimeType});
-      releaseMediaRecorderStream_();
-      return resolve(blob);
-    }
+    if(!mediaRecorder || mediaRecorder.state==='inactive') return resolve(new Blob(audioParts,{type:audioMimeType}));
     const r=mediaRecorder;
-    const done=()=>{
-      const blob=new Blob(audioParts,{type:r.mimeType||audioMimeType});
-      releaseMediaRecorderStream_();
-      resolve(blob);
-    };
+    const done=()=>resolve(new Blob(audioParts,{type:r.mimeType||audioMimeType}));
     r.addEventListener('stop',done,{once:true});
     try{r.stop();}catch(e){done();}
   });
 }
 
+async function uploadAuthoritativeTurn_(blob){
+  if(!blob || blob.size<100) throw new Error('Original microphone recording is empty.');
+  if(blob.size>12*1024*1024) throw new Error('Original microphone recording is larger than 12 MB for one turn.');
+
+  const turnId='t'+(++audioTurnCounter)+'_'+Date.now().toString(36);
+  const chunkSize=180*1024; // bytes; intentionally small for reliable iPhone/Safari -> Apps Script POSTs.
+  const totalChunks=Math.ceil(blob.size/chunkSize);
+  const turnMeta={session:logicalSession,turnId:turnId,createdAt:Date.now(),totalChunks:totalChunks,originalSize:blob.size};
+  try{localStorage.setItem('MGVOICE_PENDING_AUDIO',JSON.stringify(turnMeta));}catch(e){}
+
+  const readChunkBase64=chunk=>new Promise((resolve,reject)=>{
+    const fr=new FileReader();
+    fr.onload=()=>resolve(String(fr.result).split(',')[1]||'');
+    fr.onerror=()=>reject(new Error('Could not read the original audio chunk.'));
+    fr.readAsDataURL(chunk);
+  });
+
+  // The old architecture sent the entire recording as one large no-cors POST.
+  // On iPhone/Safari that request could remain opaque/pending while Apps Script
+  // decoded Base64 and wrote Drive. V36.24 uses idempotent small chunks instead.
+  // Each chunk is independently durable; a retry cannot create duplicate data.
+  for(let i=0;i<totalChunks;i++){
+    const piece=blob.slice(i*chunkSize,Math.min(blob.size,(i+1)*chunkSize),blob.type||audioMimeType);
+    const b64=await readChunkBase64(piece);
+    const payload=JSON.stringify({
+      session:logicalSession,turnId:turnId,chunkIndex:i,totalChunks:totalChunks,
+      originalSize:blob.size,mimeType:blob.type||audioMimeType,sequence:audioTurnCounter,
+      turnType:(currentMode==='answer'?(phoneMode?'answer_phone':'answer'):'feedback'),
+      question:(currentMode==='answer'?questionText:''),chunkBase64:b64
+    });
+
+    let sent=false;
+    for(let attempt=1;attempt<=5 && !sent;attempt++){
+      try{
+        // no-cors fetch responses are opaque; a resolved fetch is NOT an ACK.
+        // The exact chunk must be confirmed independently by the server.
+        fetch(API+'?api=voiceAudioChunk',{
+          method:'POST',mode:'no-cors',
+          headers:{'Content-Type':'text/plain;charset=UTF-8'},
+          body:payload
+        }).catch(()=>{});
+
+        const ackDeadline=Date.now()+15000;
+        while(Date.now()<ackDeadline){
+          await new Promise(r=>setTimeout(r,500));
+          try{
+            const ack=await jsonpRequest({
+              api:'voiceAudioChunkStatus',
+              session:logicalSession,
+              turnId:turnId,
+              chunkIndex:i,
+              totalChunks:totalChunks
+            },5000);
+            if(ack && ack.turnId===turnId && Number(ack.chunkIndex)===i && ack.received===true){
+              sent=true;
+              break;
+            }
+            if(ack && ack.state==='error' && ack.retryable===false){
+              throw new Error(ack.message||'Audio chunk status failed.');
+            }
+          }catch(statusErr){}
+        }
+      }catch(e){}
+      if(!sent && attempt<5) await new Promise(r=>setTimeout(r,750*attempt));
+    }
+    if(!sent){
+      throw new Error('Could not confirm audio chunk '+(i+1)+' of '+totalChunks+'. The original recording was preserved; do not repeat the call.');
+    }
+    status('برفع التسجيل الأصلي... '+Math.round(((i+1)/totalChunks)*100)+'%');
+  }
+
+  // Finalize is idempotent. If Safari delays the opaque response, the durable
+  // status endpoint remains the authority; no second recording is requested.
+  let finalized=false;
+  for(let attempt=1;attempt<=3 && !finalized;attempt++){
+    const finalizePayload=JSON.stringify({
+      session:logicalSession,turnId:turnId,totalChunks:totalChunks,
+      originalSize:blob.size,mimeType:blob.type||audioMimeType,sequence:audioTurnCounter,
+      turnType:(currentMode==='answer'?(phoneMode?'answer_phone':'answer'):'feedback'),
+      question:(currentMode==='answer'?questionText:'')
+    });
+    try{
+      await Promise.race([
+        fetch(API+'?api=voiceAudioFinalize',{
+          method:'POST',mode:'no-cors',
+          headers:{'Content-Type':'text/plain;charset=UTF-8'},
+          body:finalizePayload
+        }).catch(()=>null),
+        new Promise(resolve=>setTimeout(resolve,12000))
+      ]);
+    }catch(e){}
+
+    const deadline=Date.now()+15000;
+    while(Date.now()<deadline){
+      await new Promise(r=>setTimeout(r,500));
+      try{
+        const st=await jsonpRequest({api:'voiceAudioStatus',session:logicalSession,turnId:turnId},4000);
+        if(st && st.turnId===turnId && st.state==='stored'){ finalized=true; break; }
+        if(st && st.turnId===turnId && st.state==='error'){
+          if(attempt===3) throw new Error(st.message||'Original audio finalization failed.');
+          break;
+        }
+      }catch(e){
+        if(attempt===3 && Date.now()>=deadline) throw e;
+      }
+    }
+  }
+
+  if(!finalized){
+    throw new Error('Original audio upload could not be finalized. The uploaded chunks are preserved on the server; do not repeat the call.');
+  }
+
+  setStage_('transcribe');
+  $('modeTitle').textContent='Transcribing';
+  $('modeText').textContent='التسجيل الأصلي اتخزن. دلوقتي transcription شغالة في الخلفية؛ الصفحة مش مستنية request طويل.';
+  status('بحط التسجيل الأصلي في transcription queue...');
+
+  // Queue exactly once. This endpoint only schedules background Apps Script
+  // work; it never performs the Gemini transcription inside the browser request.
+  // Queue is a short scheduling request, not the transcription itself.
+  // A timeout here is NOT a failure: the server may already have queued the job.
+  let queueResult=null;
+  try{
+    queueResult=await jsonpRequest({api:'voiceAudioQueue',session:logicalSession,turnId:turnId},12000);
+  }catch(queueErr){
+    status('الـqueue request اتأخر؛ بستنى حالة التسجيل من السيرفر بدل ما أعتبره فشل.');
+  }
+  if(queueResult && queueResult.state==='error' && queueResult.retryable===false){
+    throw new Error(queueResult.message||'Could not queue transcription.');
+  }
+
+  // Background transcription/correction can legitimately outlive one JSONP
+  // request. Never let a single status timeout abort the durable job.
+  for(let i=0;i<360;i++){
+    let st=null;
+    try{
+      st=await jsonpRequest({api:'voiceAudioStatus',session:logicalSession,turnId:turnId},7000);
+    }catch(statusErr){
+      status('الـstatus request اتأخر؛ التسجيل محفوظ، وبجرب تاني...');
+      await new Promise(r=>setTimeout(r,2500));
+      continue;
+    }
+    if(st && st.turnId===turnId && st.state==='ready' && st.transcript){
+      try{localStorage.removeItem('MGVOICE_PENDING_AUDIO');}catch(e){}
+      return st.transcript;
+    }
+    if(st && st.turnId===turnId && st.state==='error' && st.retryable===false){
+      throw new Error(st.message||'Authoritative transcription failed.');
+    }
+    if(st && st.state==='correcting'){
+      status('Gemini بيصحح الـtranscription ويحافظ على المعنى والأرقام والأسماء...');
+    }else if(st && st.state==='transcribing'){
+      status('Gemini بيحوّل التسجيل الأصلي لنص في الخلفية...');
+    }else if(st && st.state==='queued'){
+      status('التسجيل في طابور transcription... السيرفر شغال عليه في الخلفية.');
+    }else{
+      status('بستنى تأكيد حالة التسجيل الأصلي...');
+    }
+    await new Promise(r=>setTimeout(r,2000));
+  }
+
+  try{localStorage.setItem('MGVOICE_PENDING_AUDIO',JSON.stringify({session:logicalSession,turnId:turnId,createdAt:Date.now()}));}catch(e){}
+  throw new Error('Transcription is still running in the background. The original recording was preserved. Do not repeat the call; you can keep this page open and wait, or return to this page later.');
+}
+
 function startSession(){
   clearError();
 
-  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.WebSocket){
-    showError('This browser does not support the microphone + Gemini Live connection required by Voice Mode.');
+  const C=ctor();
+
+  if(!C){
+    if(phoneMode){
+      setPhoneInputVisible_(true);
+      showPhoneInputError_('التعرف الصوتي غير متاح هنا. اكتب رقم الموبايل يدويًا واستخدم الزر.');
+      $('phoneInput').focus();
+      return;
+    }
+    showError('Speech Recognition is not available in this browser. Use current Chrome or Edge.');
     return;
   }
 
+  // IMPORTANT: start SpeechRecognition directly from the button click.
+  // Do not await getUserMedia or any network operation first; keep the browser
+  // user-gesture context intact.
   if(window.__mgStartBusy) return;
   window.__mgStartBusy=true;
 
@@ -754,395 +942,32 @@ function startSession(){
 
   $('startBtn').disabled=true;
   $('stopBtn').disabled=true;
-  $('modeTitle').textContent='Starting';
-  $('modeText').textContent='سامعك. Gemini Live بيحوّل كلامك لنص وإنت بتتكلم؛ التسجيل الأصلي بيتحفظ كمان.';
-  status('ببدأ الميكروفون وGemini Live...');
 
+  $('modeTitle').textContent='Starting';
+  $('modeText').textContent='سامعك. اتكلم براحتك، وأنا هجمع القصة كلها قبل ما أحفظها.';
+  status('ببدأ التسجيل...');
+
+  // Reset the startup-attempt counter for this manual Start.
   clearRecognitionWatchdogs_();
   recognitionStartAttempts=0;
 
-  startListening_(true).catch(err=>{
+  try{
+    // This call happens synchronously in the button's click handler.
+    startListening_(true);
+  }catch(err){
     voiceEnabled=false;
     shouldKeepListening=false;
     processing=false;
     clearRecognitionWatchdogs_();
+
     $('startBtn').disabled=false;
     $('stopBtn').disabled=true;
-    showError('Could not start Gemini Live Voice: '+(err&&err.message||String(err)));
+
+    showError('Could not start Speech Recognition: '+(err?.message||String(err)));
     status('');
-  }).finally(()=>{window.__mgStartBusy=false;});
-}
-
-async function requestGeminiLiveToken_(){
-  const data=await jsonpRequest({api:'voiceLiveToken'},12000);
-  if(!data || !data.success || !data.token){
-    throw new Error((data&&data.message)||'Could not obtain a Gemini Live session token.');
+  }finally{
+    window.__mgStartBusy=false;
   }
-  return String(data.token);
-}
-
-function bytesToBase64_(bytes){
-  let binary='';
-  const chunk=0x8000;
-  for(let i=0;i<bytes.length;i+=chunk){
-    binary+=String.fromCharCode.apply(null,bytes.subarray(i,Math.min(i+chunk,bytes.length)));
-  }
-  return btoa(binary);
-}
-
-function downsampleTo16k_(input,sampleRate){
-  if(!input || !input.length) return new Int16Array(0);
-  if(sampleRate===16000){
-    const out=new Int16Array(input.length);
-    for(let i=0;i<input.length;i++){
-      const x=Math.max(-1,Math.min(1,input[i]));
-      out[i]=x<0?x*32768:x*32767;
-    }
-    return out;
-  }
-  const ratio=sampleRate/16000;
-  const length=Math.max(1,Math.floor(input.length/ratio));
-  const out=new Int16Array(length);
-  for(let i=0;i<length;i++){
-    const pos=i*ratio;
-    const i0=Math.floor(pos);
-    const i1=Math.min(i0+1,input.length-1);
-    const frac=pos-i0;
-    const sample=input[i0]*(1-frac)+input[i1]*frac;
-    const x=Math.max(-1,Math.min(1,sample));
-    out[i]=x<0?x*32768:x*32767;
-  }
-  return out;
-}
-
-function flushLivePcm_(){
-  if(!liveSocket || liveSocket.readyState!==WebSocket.OPEN || !liveReady) return;
-  const frameCount=1600; // 100 ms at 16 kHz.
-  while(livePcmLength>=frameCount){
-    const frame=new Int16Array(frameCount);
-    let offset=0;
-    while(offset<frameCount && livePcmBuffer.length){
-      const first=livePcmBuffer[0];
-      const take=Math.min(first.length,frameCount-offset);
-      frame.set(first.subarray(0,take),offset);
-      offset+=take;
-      if(take===first.length) livePcmBuffer.shift();
-      else livePcmBuffer[0]=first.subarray(take);
-      livePcmLength-=take;
-    }
-    try{
-      liveSocket.send(JSON.stringify({realtimeInput:{audio:{data:bytesToBase64_(new Uint8Array(frame.buffer)),mimeType:'audio/pcm;rate=16000'}}}));
-    }catch(e){ return; }
-  }
-}
-
-function startLiveAudioPipeline_(){
-  if(liveAudioContext || !mediaStream) return;
-  const AC=window.AudioContext||window.webkitAudioContext;
-  if(!AC) throw new Error('Web Audio is not available in this browser.');
-
-  liveAudioContext=new AC();
-  if(liveAudioContext.state==='suspended'){
-    try{ liveAudioContext.resume(); }catch(e){}
-  }
-
-  liveSourceNode=liveAudioContext.createMediaStreamSource(mediaStream);
-  // ScriptProcessor remains broadly supported on iOS Safari. It is used only
-  // as a PCM bridge; the authoritative recording is still MediaRecorder.
-  liveProcessorNode=liveAudioContext.createScriptProcessor(4096,1,1);
-  liveSilentGain=liveAudioContext.createGain();
-  liveSilentGain.gain.value=0;
-
-  livePcmBuffer=[];
-  livePcmLength=0;
-
-  liveProcessorNode.onaudioprocess=e=>{
-    if(!liveSocket || !liveReady || !shouldKeepListening || processing) return;
-    const input=e.inputBuffer.getChannelData(0);
-    const pcm=downsampleTo16k_(input,liveAudioContext.sampleRate);
-    if(pcm.length){
-      livePcmBuffer.push(pcm);
-      livePcmLength+=pcm.length;
-      flushLivePcm_();
-    }
-  };
-
-  liveSourceNode.connect(liveProcessorNode);
-  liveProcessorNode.connect(liveSilentGain);
-  liveSilentGain.connect(liveAudioContext.destination);
-  liveStreamStartedAt=Date.now();
-}
-
-function stopLiveAudioPipeline_(){
-  try{if(liveProcessorNode) liveProcessorNode.disconnect();}catch(e){}
-  try{if(liveSourceNode) liveSourceNode.disconnect();}catch(e){}
-  try{if(liveSilentGain) liveSilentGain.disconnect();}catch(e){}
-  liveProcessorNode=null;
-  liveSourceNode=null;
-  liveSilentGain=null;
-  if(liveAudioContext){try{liveAudioContext.close();}catch(e){}}
-  liveAudioContext=null;
-  livePcmBuffer=[];
-  livePcmLength=0;
-}
-
-function appendLiveFinal_(text){
-  const clean=String(text||'').replace(/\s+/g,' ').trim();
-  if(!clean) return;
-  turnFinal=(turnFinal+' '+clean).replace(/\s+/g,' ').trim();
-  turnInterim='';
-  heardSpeech=true;
-  speechActive=false;
-  lastSpeechAt=Date.now();
-  lastLiveTranscriptAt=lastSpeechAt;
-  correctedLiveText=localCorrectLive_(turnFinal);
-  render();
-  scheduleLiveSilence_();
-}
-
-function setLiveInterim_(text){
-  const clean=String(text||'').replace(/\s+/g,' ').trim();
-  if(!clean) return;
-  turnInterim=clean;
-  heardSpeech=true;
-  speechActive=true;
-  lastSpeechAt=Date.now();
-  lastLiveTranscriptAt=lastSpeechAt;
-  correctedLiveText=localCorrectLive_(currentVoiceText_());
-  render();
-  scheduleLiveSilence_();
-}
-
-function scheduleLiveSilence_(){
-  clearTimeout(silenceTimer);
-  if(!shouldKeepListening || processing || !currentVoiceText_() || !lastLiveTranscriptAt) return;
-  const wait=Math.max(700,activeSilenceMs_());
-  silenceTimer=setTimeout(()=>{
-    if(!shouldKeepListening || processing || !currentVoiceText_()) return;
-    const quiet=Date.now()-lastLiveTranscriptAt;
-    if(quiet>=activeSilenceMs_()) finishTurn_('real-live-silence');
-    else scheduleLiveSilence_();
-  },wait+150);
-}
-
-function closeGeminiLive_(sendEnd){
-  return new Promise(resolve=>{
-    const ws=liveSocket;
-    if(!ws){ stopLiveAudioPipeline_(); resolve(); return; }
-    liveCloseRequested=true;
-    let settled=false;
-    const done=()=>{if(settled)return;settled=true;clearTimeout(timer);stopLiveAudioPipeline_();liveSocket=null;liveReady=false;resolve();};
-    const timer=setTimeout(done,1800);
-
-    try{
-      if(sendEnd && ws.readyState===WebSocket.OPEN){
-        flushLivePcm_();
-        ws.send(JSON.stringify({realtimeInput:{audioStreamEnd:true}}));
-      }
-      ws.addEventListener('close',done,{once:true});
-      if(!sendEnd || ws.readyState!==WebSocket.OPEN){try{ws.close();}catch(e){done();}}
-      else setTimeout(()=>{try{ws.close();}catch(e){}},1500);
-    }catch(e){done();}
-  });
-}
-
-async function startGeminiLive_(){
-  const token=await requestGeminiLiveToken_();
-  return new Promise((resolve,reject)=>{
-    const url='wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained?access_token='+encodeURIComponent(token);
-    const ws=new WebSocket(url);
-    liveSocket=ws;
-    liveReady=false;
-    liveCloseRequested=false;
-
-    let settled=false;
-    const fail=(message)=>{
-      if(settled) return;
-      settled=true;
-      try{ws.close();}catch(e){}
-      liveSocket=null;
-      liveReady=false;
-      stopLiveAudioPipeline_();
-      reject(new Error(message||'Gemini Live connection failed.'));
-    };
-
-    ws.onopen=()=>{
-      try{
-        const setupMessage={
-          setup:{
-            model:'models/gemini-3.5-transcribe-live',
-            generationConfig:{responseModalities:['TEXT']},
-            inputAudioTranscription:{
-              languageCodes:[],
-              customVocabulary:['Groova','Mivida','Uptown Cairo','One Ninety','Mountain View','Mountain View Ras El Hekma','Marassi','Hacienda Bay','Palm Hills','Hyde Park','The Brooks','District 5','ZED','Azad Views','Azzar','Ramla','Ras El Hekma','Element','Cold Call','FB','Resale','Standalone','Twin House','Town House','Villa','Apartment'],
-              mode:'VERBATIM'
-            }
-          }
-        };
-        ws.send(JSON.stringify(setupMessage));
-      }catch(e){ fail(e.message); }
-    };
-
-    ws.onmessage=async event=>{
-      try{
-        let raw=event.data;
-        // Browser WebSocket implementations may deliver Gemini Live frames
-        // as text OR Blob. JSON.parse(Blob) becomes "[object Blob]" and
-        // produces the exact "Unexpected identifier object" failure.
-        if(typeof raw!=='string'){
-          if(raw instanceof Blob){
-            raw=await raw.text();
-          }else if(raw instanceof ArrayBuffer){
-            raw=new TextDecoder('utf-8').decode(new Uint8Array(raw));
-          }else if(raw && raw.buffer instanceof ArrayBuffer){
-            raw=new TextDecoder('utf-8').decode(new Uint8Array(raw.buffer,raw.byteOffset||0,raw.byteLength||raw.buffer.byteLength));
-          }else{
-            raw=String(raw);
-          }
-        }
-        const msg=JSON.parse(raw);
-        if(msg.setupComplete){
-          try{
-            liveReady=true;
-            startLiveAudioPipeline_();
-            settled=true;
-            status(currentMode==='answer'?'Listening for your answer...':'Listening... Gemini Live transcription is active.');
-            resolve();
-          }catch(e){
-            fail('Gemini Live audio pipeline could not start: '+String(e&&e.message||e));
-          }
-          return;
-        }
-        const content=msg.serverContent;
-        if(!content) return;
-        if(content.interimInputTranscription) setLiveInterim_(content.interimInputTranscription.text);
-        if(content.inputTranscription) appendLiveFinal_(content.inputTranscription.text);
-      }catch(e){
-        if(!settled) fail('Invalid Gemini Live response: '+String(e&&e.message||e));
-      }
-    };
-
-    ws.onerror=()=>{ if(!settled) fail('Gemini Live WebSocket connection failed.'); };
-    ws.onclose=event=>{
-      const wasActive=liveReady;
-      liveSocket=null;
-      liveReady=false;
-      stopLiveAudioPipeline_();
-      if(!settled){ fail('Gemini Live closed before the transcription session was ready.'); return; }
-      if(wasActive && !liveCloseRequested && shouldKeepListening && !processing){
-        showError('Gemini Live connection closed. Your original audio is still being recorded. Press Finish & Save to preserve this turn.');
-      }
-    };
-  });
-}
-
-async function startListening_(newTurn){
-  clearError();
-  clearTurnTimers_();
-
-  if(processing) return;
-
-  if(newTurn){
-    turnFinal='';
-    turnInterim='';
-    correctedLiveText='';
-    speechActive=false;
-    heardSpeech=false;
-    lastSpeechAt=0;
-    lastLiveTranscriptAt=0;
-    phoneAttempts=0;
-    liveCloseRequested=false;
-    if(currentMode==='call') liveCorrectionSeq++;
-    render();
-  }
-
-  shouldKeepListening=true;
-  isListening=false;
-
-  await ensureMediaStream_();
-  if(!shouldKeepListening || processing) return;
-
-  $('modeTitle').textContent=currentMode==='answer' ? 'Listening for Answer' : 'Listening';
-  setStage_('recording');
-  $('startBtn').disabled=true;
-  $('stopBtn').disabled=false;
-  status('بفتح Gemini Live transcription...');
-
-  // Start the authoritative recorder BEFORE opening Gemini Live.
-  // Gemini is the live transcription layer; it must never control when the
-  // original microphone recording begins. This prevents the first seconds
-  // of a call from being lost while the WebSocket/token is connecting.
-  startMediaRecorder_();
-  isListening=true;
-
-  let liveError=null;
-  for(let attempt=0;attempt<2;attempt++){
-    try{
-      await startGeminiLive_();
-      liveError=null;
-      break;
-    }catch(err){
-      liveError=err;
-      if(attempt===0){
-        status('Gemini Live بيعيد الاتصال مرة واحدة تلقائيًا...');
-        await new Promise(resolve=>setTimeout(resolve,500));
-      }
-    }
-  }
-  if(liveError){
-    // Do not leave an orphaned MediaRecorder running when Live cannot start.
-    try{await stopMediaRecorder_();}catch(e){}
-    isListening=false;
-    throw liveError;
-  }
-  if(!shouldKeepListening || processing) return;
-  $('modeText').textContent=currentMode==='answer'
-    ? 'اتكلم براحتك. Gemini Live بيسمع وبيحوّل الإجابة لنص لحظيًا.'
-    : 'اتكلم براحتك. Gemini Live بيحوّل كلامك لنص لحظيًا، والتسجيل الأصلي محفوظ.';
-}
-
-async function saveAuthoritativeTurn_(blob){
-  if(!blob || blob.size<100) throw new Error('Original microphone recording is empty.');
-  if(blob.size>12*1024*1024) throw new Error('Original microphone recording is larger than 12 MB for one turn.');
-
-  const turnId='t'+(++audioTurnCounter)+'_'+Date.now().toString(36);
-  try{localStorage.setItem('MGVOICE_PENDING_AUDIO',JSON.stringify({session:logicalSession,turnId:turnId,createdAt:Date.now()}));}catch(e){}
-
-  const b64=await new Promise((resolve,reject)=>{
-    const fr=new FileReader();
-    fr.onload=()=>resolve(String(fr.result).split(',')[1]||'');
-    fr.onerror=()=>reject(new Error('Could not read the original audio.'));
-    fr.readAsDataURL(blob);
-  });
-
-  // Audio archiving is independent from transcription. The POST is no-cors,
-  // so the browser cannot inspect its response. The server now queues the job
-  // itself after a successful save; the client only waits for the cache-backed
-  // status endpoint to confirm that the server owns the recording.
-  const request=fetch(API+'?api=voiceAudio',{
-    method:'POST',mode:'no-cors',
-    headers:{'Content-Type':'text/plain;charset=UTF-8'},
-    body:JSON.stringify({session:logicalSession,turnId:turnId,sequence:audioTurnCounter,mimeType:blob.type||audioMimeType,audioBase64:b64,turnType:(currentMode==='answer'?(phoneMode?'answer_phone':'answer'):'feedback'),question:(currentMode==='answer'?questionText:'')})
-  }).catch(()=>null);
-
-  // Do not delete the recovery marker merely because 3.5 seconds elapsed.
-  // Keep it until the server confirms stored/queued/transcribing/ready.
-  const startedAt=Date.now();
-  let confirmed=false;
-  while(Date.now()-startedAt<15000){
-    try{
-      const state=await jsonpRequest({api:'voiceAudioStatus',session:logicalSession,turnId:turnId},3000);
-      const s=String(state&&state.state||'').toLowerCase();
-      if(['stored','queued','transcribing','ready'].indexOf(s)>=0){ confirmed=true; break; }
-      if(s==='error' && state.retryable===false) break;
-    }catch(e){}
-    await new Promise(resolve=>setTimeout(resolve,700));
-  }
-  if(confirmed){
-    try{localStorage.removeItem('MGVOICE_PENDING_AUDIO');}catch(e){}
-  }
-  await Promise.race([request,new Promise(resolve=>setTimeout(resolve,1000))]);
-  return turnId;
 }
 
 async function finishTurn_(reason){
@@ -1160,49 +985,63 @@ async function finishTurn_(reason){
 
   try{ if(recognition) recognition.abort(); }catch(e){}
 
+  const t=currentVoiceText_();
+
+  turnFinal='';
+  turnInterim='';
+  lastSpeechAt=0;
+
   $('startBtn').disabled=true;
   $('stopBtn').disabled=true;
   setStage_('upload');
   $('modeTitle').textContent='Processing';
-  $('modeText').textContent='خلصت. النص اتجمع من Gemini Live، والتسجيل الأصلي محفوظ كنسخة مرجعية.';
-  status('بقف Gemini Live وبحفظ التسجيل الأصلي...');
+  $('modeText').textContent='التسجيل وقف. الصوت الأصلي محفوظ، ودلوقتي بجهّز مراحل المعالجة واحدة واحدة. ما تعيدش المكالمة.';
+  status(reason==='manual'
+    ? (phoneMode ? 'خلصت الرقم. برفع التسجيل الأصلي...' : 'خلصت التسجيل. برفع التسجيل الأصلي...')
+    : (phoneMode ? 'خلصت الرقم. برفع التسجيل الأصلي...' : 'خلصنا الكلام. برفع التسجيل الأصلي...'));
 
-  // Tell Live to finalize the current audio stream, then give the last final
-  // transcription event a short bounded window. Never wait for file-based ASR.
-  try{await closeGeminiLive_(true);}catch(e){}
-
-  const t=currentVoiceText_();
-  if(!t){
+  // Phone answers have a special fallback: SpeechRecognition may return no
+  // text even though the MediaRecorder captured the spoken number. In phone
+  // mode we still upload the authoritative audio so Gemini can transcribe it.
+  // Normal call turns still require browser speech text before upload.
+  if(!t && !(currentMode==='answer' && phoneMode)){
     processing=false;
     $('startBtn').disabled=false;
-    showError('Gemini Live لم يستقبل كلامًا واضحًا في هذا الدور.');
-    status('');
+    status('مفيش كلام اتسجل.');
+    render();
     return;
   }
 
+  let authoritativeText='';
   try{
     const audioBlob=await stopMediaRecorder_();
-    status('التسجيل الأصلي محفوظ؛ بكمل الـCRM من النص الجاهز...');
-    await saveAuthoritativeTurn_(audioBlob);
+    setStage_('upload');
+    status('التسجيل الأصلي محفوظ. برفعه للسيرفر مرة واحدة...');
+    authoritativeText=await uploadAuthoritativeTurn_(audioBlob);
   }catch(err){
-    // A transcription result must never be discarded because audio archiving
-    // was slow. The original audio upload is best-effort and independent.
-    console.error('MG RESALE audio archive warning: '+String(err&&err.message||err));
+    processing=false; $('startBtn').disabled=false; $('stopBtn').disabled=true;
+    showError((err&&err.message)||String(err));
+    status('التسجيل الأصلي محفوظ قدر الإمكان. ما تعيدش المكالمة.');
+    return;
   }
 
   if(currentMode==='answer' && phoneMode){
-    const digits=normalizeSpokenDigits_(t);
+    const digits=normalizeSpokenDigits_(authoritativeText);
+
     if(!validEgyptianMobileDigits_(digits)){
       processing=false;
       phoneAttempts++;
       turnFinal='';
       turnInterim='';
       lastSpeechAt=0;
-      lastLiveTranscriptAt=0;
+      lastAudibleAt=Date.now();
       phoneMode=true;
       $('questionText').textContent='الرقم مش واضح أو ناقص. قول رقم الموبايل رقم رقم. خد وقتك، وأنا مستنيك تخلص.';
+      setPhoneInputVisible_(true);
+      showPhoneInputError_('مش قادر أقرأ الرقم من الصوت. تقدر تكتبه هنا بدل ما تعيده.');
       render();
-      speak('الرقم مش واضح أو ناقص. قول رقم الموبايل رقم رقم. خد وقتك، وأنا مستنيك تخلص.',true);
+      speak('الرقم مش واضح أو ناقص. تقدر تكتبه هنا، أو قوله رقم رقم. خد وقتك وأنا مستنيك تخلص.',true);
+      setTimeout(()=>{try{$('phoneInput').focus();}catch(e){}},250);
       return;
     }
 
@@ -1215,19 +1054,21 @@ async function finishTurn_(reason){
 
   if(currentMode==='answer'){
     status('براجع الإجابة بسرعة...');
-    correctAnswerContext_(t).then(corrected=>{
+
+    correctAnswerContext_(authoritativeText).then(corrected=>{
       conversation.push('ANSWER: '+corrected);
       render();
       processConversation();
     }).catch(()=>{
-      conversation.push('ANSWER: '+t);
+      conversation.push('ANSWER: '+authoritativeText);
       render();
       processConversation();
     });
+
     return;
   }
 
-  conversation.push('FEEDBACK: '+t);
+  conversation.push('FEEDBACK: '+authoritativeText);
   render();
   processConversation();
 }
@@ -1258,7 +1099,7 @@ function jsonpRequest(params,timeoutMs=15000){
     }
 
     window[cb]=data=>finish(data,null);
-    script.onerror=()=>finish(null,new Error('CRM request failed for API: '+String(params.api||'unknown')+'. The server returned no executable JSONP response.'));
+    script.onerror=()=>finish(null,new Error('CRM request failed.'));
     script.src=API+'?'+q.toString();
     document.head.appendChild(script);
   });
@@ -1491,6 +1332,66 @@ function arabicQuestion(data){
   return null;
 }
 
+function setPhoneInputVisible_(visible){
+  const wrap=$('phoneInputWrap');
+  if(!wrap) return;
+  wrap.classList.toggle('hidden',!visible);
+  if(!visible){
+    $('phoneInput').value='';
+    $('phoneInputError').textContent='';
+  }
+}
+
+function normalizeManualPhone_(raw){
+  let s=String(raw||'').trim();
+  s=s.replace(/[٠-٩]/g,d=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+  s=s.replace(/[\u00A0\-().]/g,' ').replace(/\s+/g,' ').trim();
+  let digits=s.replace(/\D/g,'');
+  if(digits.startsWith('0020') && digits.length===14) digits='20'+digits.slice(4);
+  if(digits.startsWith('20') && digits.length===12) digits='0'+digits.slice(2);
+  if(digits.length===10 && digits.startsWith('1')) digits='0'+digits;
+  return digits;
+}
+
+function showPhoneInputError_(message){
+  $('phoneInputError').textContent=message||'';
+}
+
+async function submitPhoneManual_(){
+  if(manualPhoneSubmitting || !phoneMode || currentMode!=='answer') return;
+  const digits=normalizeManualPhone_($('phoneInput').value);
+  if(!validEgyptianMobileDigits_(digits)){
+    showPhoneInputError_('الرقم لازم يكون رقم موبايل مصري صحيح من 11 رقم، مثال 01012345678.');
+    $('phoneInput').focus();
+    return;
+  }
+
+  manualPhoneSubmitting=true;
+  clearError();
+  shouldKeepListening=false;
+  isListening=false;
+  speechActive=false;
+  clearTurnTimers_();
+  clearRecognitionWatchdogs_();
+  stopVAD_();
+  try{if(recognition) recognition.abort();}catch(e){}
+
+  // Stop the local recorder cleanly. The manually supplied number is authoritative;
+  // we do not block CRM processing on another upload just to accept a typed number.
+  try{await stopMediaRecorder_();}catch(e){}
+
+  processing=true;
+  $('startBtn').disabled=true;
+  $('stopBtn').disabled=true;
+  setPhoneInputVisible_(false);
+  conversation.push('ANSWER: PHONE '+digits);
+  phoneMode=false;
+  manualPhoneSubmitting=false;
+  render();
+  status('تمام، الرقم اتسجل. بكمل بيانات الليد...');
+  processConversation();
+}
+
 function handleResult(data){
   window.__mgRequestBusy=false;
   processing=false;
@@ -1503,6 +1404,7 @@ function handleResult(data){
 
   if(data.success){
     $('question').classList.add('hidden');
+    setPhoneInputVisible_(false);
     questionText='';
     currentMode='call';
     phoneMode=false;
@@ -1570,6 +1472,7 @@ function ask(text){
     : questionText;
 
   $('question').classList.remove('hidden');
+  setPhoneInputVisible_(phoneMode);
 
   currentMode='answer';
 
@@ -1586,6 +1489,7 @@ function ask(text){
 
   speakQuestionIntroThen_(spoken);
 }
+
 
 async function recoverDurableVoiceSession_(){
   let session='';
@@ -1613,8 +1517,6 @@ function reset(){
 
   try{if(recognition) recognition.abort();}catch(e){}
   try{speechSynthesis.cancel();}catch(e){}
-  try{closeGeminiLive_(false);}catch(e){}
-  stopLiveAudioPipeline_();
   stopVAD_();
 
   recognition=null;
@@ -1622,7 +1524,6 @@ function reset(){
   recognitionStartAttempts=0;
   voiceEnabled=false;
   isListening=false;
-  iosSpeechFallback=false;
 
   turnFinal='';
   turnInterim='';
@@ -1633,6 +1534,8 @@ function reset(){
   conversation=[];
   try{localStorage.removeItem('MGVOICE_SESSION');}catch(e){}
   questionText='';
+  setPhoneInputVisible_(false);
+  manualPhoneSubmitting=false;
   currentMode='call';
   phoneMode=false;
   phoneAttempts=0;
@@ -1655,5 +1558,7 @@ function reset(){
 $('startBtn').onclick=startSession;
 $('stopBtn').onclick=stopNow;
 $('resetBtn').onclick=reset;
+$('phoneSubmitBtn').onclick=submitPhoneManual_;
+$('phoneInput').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); submitPhoneManual_(); } });
 recoverDurableVoiceSession_();
 </script>
