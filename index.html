@@ -26,6 +26,7 @@
   <div id="recoveredActionText">المكالمة محفوظة على السيرفر.</div>
   <button id="processRecoveredBtn" type="button">▶ Process &amp; Save Recovered Call</button>
   <button id="resumeRecoveredBtn" type="button" class="secondary">↩ Resume Recovered Call</button>
+  <button id="retryRecoveryBtn" type="button" class="secondary">↻ Check Recovery Again</button>
 </div>
 <button id="startBtn" class="start" type="button">🎙️ Start Voice</button>
 <button id="stopBtn" class="stop" type="button" disabled>⏹ Finish & Save</button>
@@ -972,7 +973,7 @@ async function uploadAuthoritativeTurn_(blob,ctx){
   const turnId='t'+(++audioTurnCounter)+'_'+Date.now().toString(36);
   const chunkSize=180*1024; // bytes; intentionally small for reliable iPhone/Safari -> Apps Script POSTs.
   const totalChunks=Math.ceil(blob.size/chunkSize);
-  const turnMeta={session:ctx.session,turnId:turnId,createdAt:Date.now(),totalChunks:totalChunks,originalSize:blob.size,turnType:(ctx.mode==='answer'?(ctx.phoneMode?'answer_phone':'answer'):'feedback'),question:(ctx.mode==='answer'?ctx.question:'')};
+  const turnMeta={session:ctx.session,turnId:turnId,createdAt:Date.now(),totalChunks:totalChunks,originalSize:blob.size,mimeType:blob.type||audioMimeType,sequence:audioTurnCounter,turnType:(ctx.mode==='answer'?(ctx.phoneMode?'answer_phone':'answer'):'feedback'),question:(ctx.mode==='answer'?ctx.question:'')};
   try{localStorage.setItem('MGVOICE_PENDING_AUDIO',JSON.stringify(turnMeta));}catch(e){}
 
   const readChunkBase64=chunk=>new Promise((resolve,reject)=>{
@@ -1036,6 +1037,11 @@ async function uploadAuthoritativeTurn_(blob,ctx){
     }
     status('برفع التسجيل الأصلي... '+Math.round(((i+1)/totalChunks)*100)+'%');
   }
+
+  // 100% means every transport chunk is durably acknowledged, not that the
+  // final Drive audio file already exists. Make that boundary explicit so the
+  // UI never looks frozen at 100% while finalize is still running.
+  status('100% — كل أجزاء التسجيل وصلت. بعمل الحفظ النهائي الآن...');
 
   // Finalize is idempotent. If Safari delays the opaque response, the durable
   // status endpoint remains the authority; no second recording is requested.
@@ -1695,35 +1701,79 @@ async function recoverDurableVoiceSession_(){
   try{session=localStorage.getItem('MGVOICE_SESSION')||''; pending=JSON.parse(localStorage.getItem('MGVOICE_PENDING_AUDIO')||'null');}catch(e){}
   if(!session && pending && pending.session) session=String(pending.session);
   if(!session) return;
+
+  // CRITICAL iPhone/Safari recovery boundary:
+  // If Face ID/page lock/reload happens after chunk 100% but before the
+  // opaque finalize POST completes, the old version could see no durable job
+  // and incorrectly fall back to a new empty session. Reconstruct the final
+  // audio from durable chunks BEFORE asking voiceSession for pending jobs.
+  if(pending && pending.turnId){
+    try{
+      const recoveredUpload=await jsonpRequest({
+        api:'voiceAudioRecoverUpload',
+        session:session,
+        turnId:String(pending.turnId),
+        totalChunks:Number(pending.totalChunks||0),
+        originalSize:Number(pending.originalSize||0),
+        mimeType:String(pending.mimeType||'audio/webm'),
+        sequence:Number(pending.sequence||0),
+        turnType:String(pending.turnType||'feedback'),
+        question:String(pending.question||'')
+      },15000);
+
+      if(recoveredUpload && recoveredUpload.state==='stored'){
+        // Final audio is now durable. Queueing is idempotent and can safely be
+        // repeated after a page reload.
+        try{await jsonpRequest({api:'voiceAudioQueue',session:session,turnId:String(pending.turnId)},12000);}catch(e){}
+      }
+    }catch(e){/* voiceSession/recovery below remains authoritative */}
+  }
+
   try{
     const data=await jsonpRequest({api:'voiceSession',session:session},12000);
     if(data && data.success){
       logicalSession=session;
       if(Array.isArray(data.conversation) && data.conversation.length) conversation=data.conversation.slice();
       const jobs=Array.isArray(data.pendingJobs)?data.pendingJobs:[];
-      if(jobs.length){
-        const target=pending&&pending.turnId?jobs.find(j=>j.turnId===pending.turnId):jobs[0];
-        if(target){
-          try{await jsonpRequest({api:'voiceAudioRecovery',session:session,turnId:target.turnId},12000);}catch(e){}
-          $('modeTitle').textContent='Recovering Call';
-          $('modeText').textContent='التسجيل الأصلي محفوظ. بكمل المعالجة من آخر حالة بدل ما نعيد التسجيل.';
-          render(); showRecoveredActions_();
-          status('التسجيل محفوظ؛ بكمل الـtranscription/AI من السيرفر...');
-          for(let i=0;i<36;i++){
-            await new Promise(r=>setTimeout(r,2500));
-            let st=null; try{st=await jsonpRequest({api:'voiceAudioStatus',session:session,turnId:target.turnId},7000);}catch(e){continue;}
-            if(st&&st.state==='ready'){
-              try{localStorage.removeItem('MGVOICE_PENDING_AUDIO');}catch(e){}
-              const refreshed=await jsonpRequest({api:'voiceSession',session:session},12000);
-              if(refreshed&&refreshed.success&&Array.isArray(refreshed.conversation)) conversation=refreshed.conversation.slice();
-              render(); showRecoveredActions_(); status('تم استرجاع التسجيل والمعالجة بدون إعادة المكالمة.'); return;
-            }
-            if(st&&st.state==='error'&&st.retryable===false){ showError(st.message||'تعذر استكمال التسجيل المحفوظ.'); return; }
+      const target=pending&&pending.turnId
+        ? jobs.find(j=>j.turnId===pending.turnId)
+        : jobs[0];
+
+      if(target){
+        try{await jsonpRequest({api:'voiceAudioRecovery',session:session,turnId:target.turnId},12000);}catch(e){}
+        $('modeTitle').textContent='Recovering Call';
+        $('modeText').textContent='التسجيل الأصلي محفوظ. بكمل المعالجة من آخر حالة بدل ما نعيد التسجيل.';
+        render(); showRecoveredActions_();
+        status('التسجيل محفوظ؛ بكمل الـtranscription/AI من السيرفر...');
+        for(let i=0;i<36;i++){
+          await new Promise(r=>setTimeout(r,2500));
+          let st=null; try{st=await jsonpRequest({api:'voiceAudioStatus',session:session,turnId:target.turnId},7000);}catch(e){continue;}
+          if(st&&st.state==='ready'){
+            try{localStorage.removeItem('MGVOICE_PENDING_AUDIO');}catch(e){}
+            const refreshed=await jsonpRequest({api:'voiceSession',session:session},12000);
+            if(refreshed&&refreshed.success&&Array.isArray(refreshed.conversation)) conversation=refreshed.conversation.slice();
+            render(); showRecoveredActions_(); status('تم استرجاع التسجيل والمعالجة بدون إعادة المكالمة.'); return;
           }
-          return;
+          if(st&&st.state==='error'&&st.retryable===false){ showError(st.message||'تعذر استكمال التسجيل المحفوظ.'); return; }
         }
+        status('المعالجة ما زالت شغالة في الخلفية. التسجيل محفوظ؛ ما تعيدش المكالمة.');
+        return;
       }
-      if(!Array.isArray(data.conversation)||!data.conversation.length) return;
+
+      if(!Array.isArray(data.conversation)||!data.conversation.length){
+        // If a durable upload exists but the session endpoint has not indexed
+        // it yet, keep the recovery context visible instead of silently falling
+        // back to a brand-new call.
+        if(pending && pending.turnId){
+          logicalSession=session;
+          $('modeTitle').textContent='Recovering Call';
+          $('modeText').textContent='التسجيل الأصلي محفوظ، وبستنى تأكيد المعالجة على السيرفر. ما تعيدش المكالمة.';
+          render(); showRecoveredActions_();
+          status('التسجيل محفوظ؛ بستنى الـserver state...');
+        }
+        return;
+      }
+      logicalSession=session;
       $('modeTitle').textContent='Recovered Call';
       $('modeText').textContent='رجعتلك المكالمة المحفوظة على السيرفر. التسجيلات السابقة مش محتاجة تتعاد.';
       render(); showRecoveredActions_(); status('تم استرجاع المكالمة المحفوظة. اختار Process & Save أو Resume حسب آخر خطوة.');
@@ -1746,23 +1796,57 @@ function recoveredLastIsQuestion_(){
   return /^QUESTION\s*:/i.test(t) || /قول رقم الموبايل|رقم الموبايل|phone|mobile/i.test(t);
 }
 
+function hasPendingDurableAudio_(){
+  try{
+    const pending=JSON.parse(localStorage.getItem('MGVOICE_PENDING_AUDIO')||'null');
+    return !!(pending && pending.turnId && pending.session);
+  }catch(e){
+    return false;
+  }
+}
+
 function showRecoveredActions_(){
   const box=$('recoveredAction');
   if(!box) return;
   const processBtn=$('processRecoveredBtn');
   const resumeBtn=$('resumeRecoveredBtn');
+  const retryBtn=$('retryRecoveryBtn');
   const hasFeedback=recoveredHasFeedback_();
   const lastQuestion=recoveredLastIsQuestion_();
+  const hasPending=hasPendingDurableAudio_();
 
-  box.classList.toggle('show', !!conversation.length);
+  // A pending durable upload is itself a recoverable state even when the
+  // conversation manifest is still empty. Never hide recovery controls
+  // merely because transcript indexing has not completed yet.
+  box.classList.toggle('show', !!conversation.length || hasPending);
   if(processBtn) processBtn.style.display=hasFeedback?'block':'none';
   if(resumeBtn) resumeBtn.style.display=lastQuestion?'block':'none';
+  if(retryBtn) retryBtn.style.display=hasPending && !conversation.length?'block':'none';
 
   const text=$('recoveredActionText');
   if(text){
-    text.textContent=lastQuestion
-      ? 'المكالمة محفوظة وفيها سؤال مفتوح. تقدر تكمل المكالمة أو تعالج البيانات المحفوظة.'
-      : 'المكالمة محفوظة. تقدر تعالج البيانات المحفوظة وتكملها في الـCRM.';
+    if(hasPending && !conversation.length){
+      text.textContent='التسجيل الأصلي محفوظ، لكن المعالجة لم تُفهرس في الـCRM بعد. اضغط Check Recovery Again لو الصفحة لم تكمل تلقائيًا — وما تعيدش المكالمة.';
+    }else{
+      text.textContent=lastQuestion
+        ? 'المكالمة محفوظة وفيها سؤال مفتوح. تقدر تكمل المكالمة أو تعالج البيانات المحفوظة.'
+        : 'المكالمة محفوظة. تقدر تعالج البيانات المحفوظة وتكملها في الـCRM.';
+    }
+  }
+  $('stopBtn').disabled=true;
+}
+
+async function retryDurableRecovery_(){
+  if(window.__mgRecoveryBusy) return;
+  window.__mgRecoveryBusy=true;
+  clearError();
+  try{
+    status('براجع حالة التسجيل المحفوظ على السيرفر...');
+    await recoverDurableVoiceSession_();
+  }catch(e){
+    showError(e&&e.message?e.message:String(e));
+  }finally{
+    window.__mgRecoveryBusy=false;
   }
 }
 
@@ -1886,6 +1970,7 @@ function reset(){
 
 $('processRecoveredBtn').onclick=processRecoveredCall_;
 $('resumeRecoveredBtn').onclick=resumeRecoveredCall_;
+$('retryRecoveryBtn').onclick=retryDurableRecovery_;
 $('startBtn').onclick=startSession;
 $('stopBtn').onclick=stopNow;
 $('resetBtn').onclick=reset;
