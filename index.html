@@ -18,7 +18,7 @@
 <main class="app">
 <div class="brand"><h1>MG RESALE</h1><p>Voice CRM — Moo One • Durable Recovery • iPhone-safe Recording</p></div>
 <section class="card">
-<div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically and keeps your full paragraph.</span><div class="stage" id="stage"><span data-stage="recording">Recording</span><span data-stage="upload">Upload</span><span data-stage="transcribe">Transcribe</span><span data-stage="ai">AI Analysis</span><span data-stage="save">Save CRM</span></div></div>
+<div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. After a few seconds of real microphone silence, the CRM processes your turn automatically and keeps your full paragraph.</span><div class="stage" id="stage"><span data-stage="recording">Recording</span><span data-stage="upload">Upload</span><span data-stage="transcribe">Transcribe</span><span data-stage="ai">AI Analysis</span><span data-stage="save">Save CRM</span></div></div>
 <div id="question" class="question hidden"><small>CRM asks:</small><strong id="questionText"></strong><div id="phoneInputWrap" class="phoneInput hidden"><input id="phoneInput" type="tel" inputmode="tel" autocomplete="tel" placeholder="010 1234 5678" aria-label="Phone number"><button id="phoneSubmitBtn" type="button">Use This Number</button><span class="phoneHint">مش عايز تقوله صوت؟ اكتب الرقم هنا. مثال: 01012345678 أو +201012345678</span><div id="phoneInputError" class="phoneError"></div></div></div>
 <div id="transcript" class="transcript">No speech captured yet.</div>
 <div class="buttons">
@@ -39,7 +39,8 @@
 <script>
 // MOO ONE: clean voice-turn lifecycle, generation-safe async work, durable audio recovery, chunk ACK, queue self-healing, phone fallback, and mobile-first CRM UI.
 const API='https://script.google.com/macros/s/AKfycbyawltTbaWy291FyF95S0GX6oIlnoac5FzDVxFdDSqUG3VyRoTItG4Mj8zZolxRN_GIjw/exec';
-const SILENCE_MS=3000;
+const SILENCE_MS=4500;
+const RECOGNITION_FALLBACK_SILENCE_MS=9000;
 const ANSWER_SILENCE_MS=15000;
 const PHONE_SILENCE_MS=15000;
 const CHUNK_SIZE=900;
@@ -58,6 +59,7 @@ let currentMode='call';
 let questionText='';
 let conversation=[];
 let logicalSession='';
+let audioCapability='';
 let mediaStream=null;
 let mediaRecorder=null;
 let audioParts=[];
@@ -86,6 +88,7 @@ let vadThreshold=0.018;
 let vadNoiseFloor=0.006;
 let lastAudibleAt=0;
 let vadSuppressed=false;
+let vadUsesSharedMediaStream=false;
 
 let silenceTimer=null;
 let inactivityTimer=null;
@@ -99,6 +102,7 @@ let liveCorrectionSeq=0;
 let liveCorrectionInput='';
 let liveCorrectionLastSent='';
 let liveCorrectionInFlight=false;
+let liveCorrectionRetryCount=0;
 let correctedLiveText='';
 let newLeadIntroPending=false;
 let questionIntroPlayed=false;
@@ -186,17 +190,19 @@ function arabicVoice(){
 
 
 function stopVAD_(){
-  // Invalidate any in-flight getUserMedia continuation before releasing the
-  // current VAD resources. A late promise must never resurrect an old VAD.
+  // Invalidate any in-flight VAD work before releasing the analyser.
+  // VAD may inspect the SAME MediaStream already owned by MediaRecorder;
+  // never stop that shared stream from the VAD cleanup path.
   vadGeneration++;
   vadRunning=false;
   if(vadFrame) cancelAnimationFrame(vadFrame);
   vadFrame=null;
 
-  if(vadStream){
+  if(vadStream && !vadUsesSharedMediaStream){
     try{ vadStream.getTracks().forEach(function(t){t.stop();}); }catch(e){}
   }
   vadStream=null;
+  vadUsesSharedMediaStream=false;
 
   if(vadContext){
     try{ vadContext.close(); }catch(e){}
@@ -208,34 +214,14 @@ function stopVAD_(){
 
 async function startVAD_(){
   if(vadRunning) return true;
-  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return false;
+  const stream=mediaStream;
+  if(!stream || !stream.getAudioTracks || !stream.getAudioTracks().length) return false;
 
   const generation=++vadGeneration;
-  let localStream=null;
   let localContext=null;
-
   try{
-    localStream=await navigator.mediaDevices.getUserMedia({
-      audio:{
-        channelCount:1,
-        echoCancellation:true,
-        noiseSuppression:true,
-        autoGainControl:true
-      }
-    });
-
-    // Reset/stop may have happened while getUserMedia was pending. Do not
-    // install the late stream into the new call; close it immediately.
-    if(generation!==vadGeneration || !shouldKeepListening || processing){
-      try{ localStream.getTracks().forEach(function(t){t.stop();}); }catch(e){}
-      return false;
-    }
-
     const AC=window.AudioContext||window.webkitAudioContext;
-    if(!AC){
-      try{ localStream.getTracks().forEach(function(t){t.stop();}); }catch(e){}
-      return false;
-    }
+    if(!AC) return false;
 
     localContext=new AC();
     if(localContext.state==='suspended'){
@@ -244,26 +230,26 @@ async function startVAD_(){
 
     if(generation!==vadGeneration || !shouldKeepListening || processing){
       try{ localContext.close(); }catch(e){}
-      try{ localStream.getTracks().forEach(function(t){t.stop();}); }catch(e){}
       return false;
     }
 
-    const source=localContext.createMediaStreamSource(localStream);
+    const source=localContext.createMediaStreamSource(stream);
     const analyser=localContext.createAnalyser();
     analyser.fftSize=2048;
-    analyser.smoothingTimeConstant=0.12;
+    analyser.smoothingTimeConstant=0.10;
     source.connect(analyser);
 
-    vadStream=localStream;
+    vadStream=stream;
+    vadUsesSharedMediaStream=true;
     vadContext=localContext;
     vadAnalyser=analyser;
     vadRunning=true;
-    vadNoiseFloor=0.006;
-    vadThreshold=0.018;
+    clearTimeout(silenceTimer);
+    vadNoiseFloor=0.004;
+    vadThreshold=0.010;
     lastAudibleAt=Date.now();
 
     const data=new Float32Array(analyser.fftSize);
-
     const loop=()=>{
       if(!vadRunning || !vadAnalyser || generation!==vadGeneration) return;
 
@@ -272,26 +258,35 @@ async function startVAD_(){
       for(let i=0;i<data.length;i++) sum += data[i]*data[i];
       const rms=Math.sqrt(sum/data.length);
 
-      if(rms < vadThreshold*0.80){
-        vadNoiseFloor=vadNoiseFloor*0.97 + rms*0.03;
-        vadThreshold=Math.max(0.012, vadNoiseFloor*3.0);
+      // Adapt only during clearly quiet frames. Keep a conservative floor so
+      // normal iPhone speech is not mistaken for silence.
+      if(rms < vadThreshold*0.70){
+        vadNoiseFloor=vadNoiseFloor*0.985 + rms*0.015;
+        vadThreshold=Math.max(0.009, vadNoiseFloor*2.6);
       }
 
       const audible=!vadSuppressed && rms>=vadThreshold;
-
       if(audible){
         heardSpeech=true;
         lastAudibleAt=Date.now();
         lastSpeechAt=lastAudibleAt;
+        speechActive=true;
         clearTimeout(silenceTimer);
-        clearTimeout(inactivityTimer);
       }
 
-      if(shouldKeepListening && !processing && !vadSuppressed && currentVoiceText_() && lastAudibleAt){
+      if(shouldKeepListening && !processing && !vadSuppressed && heardSpeech &&
+         currentVoiceText_() && lastAudibleAt && !speechActive){
         if(Date.now()-lastAudibleAt >= activeSilenceMs_()){
           finishTurn_('real-microphone-silence');
           return;
         }
+      }
+
+      // Do not leave speechActive latched forever when SpeechRecognition misses
+      // its soundend event. A short quiet window clears the UI guard only; the
+      // actual finish boundary still requires activeSilenceMs_ of real silence.
+      if(speechActive && lastAudibleAt && Date.now()-lastAudibleAt>=650){
+        speechActive=false;
       }
 
       vadFrame=requestAnimationFrame(loop);
@@ -300,10 +295,10 @@ async function startVAD_(){
     vadFrame=requestAnimationFrame(loop);
     return true;
   }catch(e){
-    if(localContext){ try{ localContext.close(); }catch(ignore){} }
-    if(localStream){ try{ localStream.getTracks().forEach(function(t){t.stop();}); }catch(ignore){} }
+    if(localContext){try{localContext.close();}catch(ignore){}}
     if(generation===vadGeneration){
       vadStream=null;
+      vadUsesSharedMediaStream=false;
       vadContext=null;
       vadAnalyser=null;
       vadRunning=false;
@@ -417,13 +412,15 @@ function scheduleRealSilence_(){
 
   if(!shouldKeepListening || processing) return;
 
-  const text=currentVoiceText_();
+  // When real microphone VAD is active, it is the authoritative turn boundary.
+  // Recognition events alone must never stop an iPhone call while the user is
+  // still speaking or while Safari has temporarily rotated SpeechRecognition.
+  if(vadRunning) return;
 
-  // Critical guard: before SpeechRecognition returns ANY text, silence does
-  // not count as a completed answer.
+  const text=currentVoiceText_();
   if(!text || !lastSpeechAt) return;
 
-  const ms=activeSilenceMs_();
+  const ms=Math.max(activeSilenceMs_(),RECOGNITION_FALLBACK_SILENCE_MS);
   const elapsed=Date.now()-lastSpeechAt;
 
   silenceTimer=setTimeout(()=>{
@@ -616,7 +613,7 @@ function createRecognition_(){
     clearTimeout(silenceTimer);
 
     // Immediate local cleanup keeps the UI responsive; Gemini AI correction
-    // is debounced below and never blocks recognition/recording.
+    // is throttled below and never blocks recognition/recording.
     if(currentMode==='call' && !phoneMode){
       const raw=currentVoiceText_();
       const corrected=localCorrectLive_(raw);
@@ -629,7 +626,7 @@ function createRecognition_(){
     scheduleRealSilence_();
 
     // AI correction runs while the turn is still live. It is generation-safe
-    // and debounced so iPhone does not get a request for every interim token.
+    // and throttled so iPhone does not get a request for every interim token.
     if(currentMode==='call' && !phoneMode){
       queueLiveCorrection_(currentVoiceText_());
     }
@@ -753,6 +750,11 @@ function startListening_(newTurn){
 
     if(currentMode==='call'){
       liveCorrectionSeq++;
+      clearTimeout(liveCorrectionTimer);
+      liveCorrectionTimer=null;
+      liveCorrectionLastSent='';
+      liveCorrectionInFlight=false;
+      liveCorrectionRetryCount=0;
     }
 
     render();
@@ -766,7 +768,12 @@ function startListening_(newTurn){
   // finishTurn_() awaits this promise before stopping/uploading the recorder,
   // eliminating the iPhone/Safari empty-Blob race.
   const turnCtx=activeTurnContext;
-  ensureMediaRecorder_().catch(err=>{
+  ensureMediaRecorder_().then(()=>{
+    if(!voiceContextCurrent_(turnCtx) || !shouldKeepListening || processing) return;
+    // Analyze the SAME stream already owned by MediaRecorder. Do not call
+    // getUserMedia a second time on iPhone; that can steal/interrupt capture.
+    startVAD_();
+  }).catch(err=>{
     if(!voiceContextCurrent_(turnCtx)) return;
     shouldKeepListening=false;
     isListening=false;
@@ -827,7 +834,7 @@ function ensureMediaRecorder_(){
 
     // Reset/new-call invalidated this startup while getUserMedia was pending.
     // Never install a late stream or recorder into the new call.
-    if(generation!==mediaRecorderGeneration || processing===false && !shouldKeepListening){
+    if(generation!==mediaRecorderGeneration){
       if(localStream && localStream!==mediaStream){
         try{ localStream.getTracks().forEach(function(t){t.stop();}); }catch(e){}
       }
@@ -925,7 +932,9 @@ async function stopMediaRecorder_(ctx){
   if(r.state==='inactive'){
     const parts=Array.isArray(r.__mgParts)?r.__mgParts:audioParts;
     const blob=new Blob(parts,{type:r.mimeType||audioMimeType});
-    mediaRecorderReadyPromise=null;
+    // The turn is finished; release the recorder and microphone tracks now.
+    // This also invalidates any late startup continuation before the next turn.
+    cleanupMediaRecorder_();
     return blob;
   }
 
@@ -963,7 +972,10 @@ async function stopMediaRecorder_(ctx){
     }
   });
 
-  mediaRecorderReadyPromise=null;
+  // The authoritative blob is now complete. Release the recorder and all
+  // microphone tracks immediately; the next turn must always acquire a fresh
+  // recorder/stream. cleanupMediaRecorder_() also invalidates late continuations.
+  cleanupMediaRecorder_();
 
   // Do not reject an empty blob here: finishTurnCore_() must still be able
   // to complete recorder cleanup and then handle the no-speech case normally.
@@ -1041,7 +1053,7 @@ async function uploadAuthoritativeTurn_(blob,ctx){
     const b64=await readChunkBase64(piece);
     assertVoiceContextCurrent_(ctx);
     const payload=JSON.stringify({
-      session:ctx.session,turnId:turnId,chunkIndex:i,totalChunks:totalChunks,
+      session:ctx.session,auth:await ensureAudioCapability_(ctx.session),turnId:turnId,chunkIndex:i,totalChunks:totalChunks,
       originalSize:blob.size,mimeType:blob.type||audioMimeType,sequence:audioTurnCounter,
       turnType:ctx.mode==='answer'?(ctx.phoneMode?'answer_phone':'answer'):'feedback',
       question:ctx.mode==='answer'?ctx.question:'',chunkBase64:b64
@@ -1062,7 +1074,7 @@ async function uploadAuthoritativeTurn_(blob,ctx){
           try{
             const ack=await jsonpRequest({
               api:'voiceAudioChunkStatus',
-              session:ctx.session,
+              session:ctx.session,auth:await ensureAudioCapability_(ctx.session),
               turnId:turnId,
               chunkIndex:i,
               totalChunks:totalChunks
@@ -1100,7 +1112,7 @@ async function uploadAuthoritativeTurn_(blob,ctx){
   let finalized=false;
   for(let attempt=1;attempt<=3 && !finalized;attempt++){
     const finalizePayload=JSON.stringify({
-      session:ctx.session,turnId:turnId,totalChunks:totalChunks,
+      session:ctx.session,auth:await ensureAudioCapability_(ctx.session),turnId:turnId,totalChunks:totalChunks,
       originalSize:blob.size,mimeType:blob.type||audioMimeType,sequence:audioTurnCounter,
       turnType:ctx.mode==='answer'?(ctx.phoneMode?'answer_phone':'answer'):'feedback',
       question:ctx.mode==='answer'?ctx.question:''
@@ -1115,7 +1127,7 @@ async function uploadAuthoritativeTurn_(blob,ctx){
       assertVoiceContextCurrent_(ctx);
       await new Promise(r=>setTimeout(r,500));
       try{
-        const st=await jsonpRequest({api:'voiceAudioStatus',session:ctx.session,turnId:turnId},4000);
+        const st=await jsonpRequest({api:'voiceAudioStatus',session:ctx.session,auth:await ensureAudioCapability_(ctx.session),turnId:turnId},4000);
         if(st && st.turnId===turnId && st.state==='stored'){ finalized=true; break; }
         if(st && st.turnId===turnId && st.state==='error'){
           if(attempt===3) throw new Error(st.message||'Original audio finalization failed.');
@@ -1143,7 +1155,7 @@ async function uploadAuthoritativeTurn_(blob,ctx){
   // A timeout here is NOT a failure: the server may already have queued the job.
   let queueResult=null;
   try{
-    queueResult=await jsonpRequest({api:'voiceAudioQueue',session:ctx.session,turnId:turnId},12000);
+    queueResult=await jsonpRequest({api:'voiceAudioQueue',session:ctx.session,auth:await ensureAudioCapability_(ctx.session),turnId:turnId},12000);
   }catch(queueErr){
     if(String(queueErr&&queueErr.message||'').indexOf('AUTH_REQUIRED')>=0){
       throw new Error('Google authorization is required for the Voice CRM backend. Open the Apps Script URL once in Safari, authorize the Google account, then return to MG RESALE.');
@@ -1164,7 +1176,7 @@ async function uploadAuthoritativeTurn_(blob,ctx){
   for(let i=0;i<360;i++){
     let st=null;
     try{
-      st=await jsonpRequest({api:'voiceAudioStatus',session:ctx.session,turnId:turnId},7000);
+      st=await jsonpRequest({api:'voiceAudioStatus',session:ctx.session,auth:await ensureAudioCapability_(ctx.session),turnId:turnId},7000);
     }catch(statusErr){
       if(!voiceContextCurrent_(ctx)) throw new Error('VOICE_OPERATION_STALE');
       status('الـstatus request اتأخر؛ التسجيل محفوظ، وبجرب تاني...');
@@ -1224,8 +1236,10 @@ function startSession(){
   voiceOperationGeneration++;
   activeTurnContext=null;
   logicalSession=makeSession_();
-  try{localStorage.setItem('MGVOICE_SESSION',logicalSession);}catch(e){}
+  audioCapability='';
+  try{localStorage.setItem('MGVOICE_SESSION',logicalSession);localStorage.removeItem('MGVOICE_AUDIO_CAPABILITY');}catch(e){}
   audioTurnCounter=0;
+  ensureAudioCapability_(logicalSession).catch(e=>{ console.error(e); });
   currentMode='call';
   questionText='';
   questionIntroPlayed=false;
@@ -1384,7 +1398,22 @@ function jsonpRequest(params,timeoutMs=15000){
 }
 
 function makeSession_(){
-  return 'mg_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8);
+  const bytes=new Uint8Array(18);
+  if(window.crypto && crypto.getRandomValues) crypto.getRandomValues(bytes);
+  else for(let i=0;i<bytes.length;i++) bytes[i]=Math.floor(Math.random()*256);
+  return 'mg_'+Date.now().toString(36)+'_'+Array.from(bytes).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+async function ensureAudioCapability_(session){
+  const s=String(session||'');
+  if(!s) throw new Error('Missing voice session.');
+  if(audioCapability) return audioCapability;
+  const data=await jsonpRequest({api:'voiceSession',session:s},12000);
+  if(!data || !data.audioCapability) throw new Error('Could not establish secure audio session.');
+  if(String(data.session||s)!==s) throw new Error('Audio session mismatch.');
+  audioCapability=String(data.audioCapability);
+  try{localStorage.setItem('MGVOICE_AUDIO_CAPABILITY',audioCapability);}catch(e){}
+  return audioCapability;
 }
 
 async function sendConversationChunk_(session,index,total,text){
@@ -1612,6 +1641,7 @@ function queueLiveCorrection_(segment){
       if(requestSeq!==liveCorrectionSeq || generation!==voiceOperationGeneration ||
          processing || currentMode!=='call' || phoneMode) return;
 
+      liveCorrectionRetryCount=0;
       const corrected=String(data&&data.corrected||'').trim();
       const liveNow=String(currentVoiceText_()||'').replace(/\s+/g,' ').trim();
       if(corrected){
@@ -1627,6 +1657,20 @@ function queueLiveCorrection_(segment){
       }
     }catch(e){
       // Enhancement only. Recording/transcription must never depend on Gemini.
+      // Allow one bounded retry for the same live segment; never create a retry loop.
+      if(requestSeq===liveCorrectionSeq && generation===voiceOperationGeneration &&
+         !processing && currentMode==='call' && !phoneMode &&
+         liveCorrectionRetryCount < 1){
+        liveCorrectionRetryCount++;
+        setTimeout(function(){
+          if(requestSeq===liveCorrectionSeq && generation===voiceOperationGeneration &&
+             !processing && currentMode==='call' && !phoneMode){
+            liveCorrectionLastSent='';
+            const retryText=String(currentVoiceText_()||'').replace(/\s+/g,' ').trim();
+            if(retryText) queueLiveCorrection_(retryText);
+          }
+        },900);
+      }
     }finally{
       liveCorrectionInFlight=false;
       if(requestSeq===liveCorrectionSeq && generation===voiceOperationGeneration &&
@@ -1743,7 +1787,7 @@ function handleResult(data,ctx){
 
     render();
     setStage_('');
-    try{localStorage.removeItem('MGVOICE_SESSION');localStorage.removeItem('MGVOICE_PENDING_AUDIO');}catch(e){}
+    try{localStorage.removeItem('MGVOICE_SESSION');localStorage.removeItem('MGVOICE_PENDING_AUDIO');localStorage.removeItem('MGVOICE_AUDIO_CAPABILITY');}catch(e){}
     status('تمام، المكالمة اتحفظت. جاهز للمكالمة اللي بعدها.');
     speak(data.message||'تم حفظ المكالمة بنجاح.',false);
 
@@ -1821,6 +1865,9 @@ async function recoverDurableVoiceSession_(){
   try{session=localStorage.getItem('MGVOICE_SESSION')||''; pending=JSON.parse(localStorage.getItem('MGVOICE_PENDING_AUDIO')||'null');}catch(e){}
   if(!session && pending && pending.session) session=String(pending.session);
   if(!session) return;
+  audioCapability='';
+  try{localStorage.getItem('MGVOICE_AUDIO_CAPABILITY');}catch(e){}
+  try{await ensureAudioCapability_(session);}catch(e){ console.error(e); return; }
 
   // CRITICAL iPhone/Safari recovery boundary:
   // If Face ID/page lock/reload happens after chunk 100% but before the
@@ -1831,7 +1878,7 @@ async function recoverDurableVoiceSession_(){
     try{
       const recoveredUpload=await jsonpRequest({
         api:'voiceAudioRecoverUpload',
-        session:session,
+        session:session,auth:audioCapability,
         turnId:String(pending.turnId),
         totalChunks:Number(pending.totalChunks||0),
         originalSize:Number(pending.originalSize||0),
@@ -1844,7 +1891,7 @@ async function recoverDurableVoiceSession_(){
       if(recoveredUpload && recoveredUpload.state==='stored'){
         // Final audio is now durable. Queueing is idempotent and can safely be
         // repeated after a page reload.
-        try{await jsonpRequest({api:'voiceAudioQueue',session:session,turnId:String(pending.turnId)},12000);}catch(e){}
+        try{await jsonpRequest({api:'voiceAudioQueue',session:session,auth:audioCapability,turnId:String(pending.turnId)},12000);}catch(e){}
       }
     }catch(e){/* voiceSession/recovery below remains authoritative */}
   }
@@ -1860,14 +1907,14 @@ async function recoverDurableVoiceSession_(){
         : jobs[0];
 
       if(target){
-        try{await jsonpRequest({api:'voiceAudioRecovery',session:session,turnId:target.turnId},12000);}catch(e){}
+        try{await jsonpRequest({api:'voiceAudioRecovery',session:session,auth:audioCapability,turnId:target.turnId},12000);}catch(e){}
         $('modeTitle').textContent='Recovering Call';
         $('modeText').textContent='التسجيل الأصلي محفوظ. بكمل المعالجة من آخر حالة بدل ما نعيد التسجيل.';
         render(); showRecoveredActions_();
         status('التسجيل محفوظ؛ بكمل الـtranscription/AI من السيرفر...');
         for(let i=0;i<36;i++){
           await new Promise(r=>setTimeout(r,2500));
-          let st=null; try{st=await jsonpRequest({api:'voiceAudioStatus',session:session,turnId:target.turnId},7000);}catch(e){continue;}
+          let st=null; try{st=await jsonpRequest({api:'voiceAudioStatus',session:session,auth:audioCapability,turnId:target.turnId},7000);}catch(e){continue;}
           if(st&&st.state==='ready'){
             try{localStorage.removeItem('MGVOICE_PENDING_AUDIO');}catch(e){}
             const refreshed=await jsonpRequest({api:'voiceSession',session:session},12000);
@@ -2080,7 +2127,7 @@ function reset(){
   $('stopBtn').disabled=true;
 
   $('modeTitle').textContent='Ready';
-  $('modeText').textContent='Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically and keeps your full paragraph.';
+  $('modeText').textContent='Tap Start Voice once. Speak naturally. After a few seconds of real microphone silence, the CRM processes your turn automatically and keeps your full paragraph.';
 
   render();
   status('Ready.');
