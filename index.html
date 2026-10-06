@@ -103,6 +103,7 @@ let liveCorrectionInput='';
 let liveCorrectionLastSent='';
 let liveCorrectionInFlight=false;
 let liveCorrectionRetryCount=0;
+let liveCorrectionRetryNotBefore=0;
 let correctedLiveText='';
 let newLeadIntroPending=false;
 let questionIntroPlayed=false;
@@ -755,6 +756,7 @@ function startListening_(newTurn){
       liveCorrectionLastSent='';
       liveCorrectionInFlight=false;
       liveCorrectionRetryCount=0;
+      liveCorrectionRetryNotBefore=0;
     }
 
     render();
@@ -1615,6 +1617,7 @@ function queueLiveCorrection_(segment){
   if(liveCorrectionInFlight || liveCorrectionTimer) return;
   if(text===liveCorrectionLastSent) return;
 
+  const notBefore=Math.max(0,Number(liveCorrectionRetryNotBefore||0)-Date.now());
   const requestSeq=liveCorrectionSeq;
   const generation=voiceOperationGeneration;
   const session=String(logicalSession||'');
@@ -1635,12 +1638,18 @@ function queueLiveCorrection_(segment){
       const data=await jsonpRequest({
         api:'voiceCorrect',
         session:session,
+        auth:await ensureAudioCapability_(session),
         text:requestText
       },9000);
 
       if(requestSeq!==liveCorrectionSeq || generation!==voiceOperationGeneration ||
          processing || currentMode!=='call' || phoneMode) return;
 
+      if(data && data.rateLimited){
+        liveCorrectionLastSent='';
+        liveCorrectionRetryNotBefore=Date.now()+1100;
+        return;
+      }
       liveCorrectionRetryCount=0;
       const corrected=String(data&&data.corrected||'').trim();
       const liveNow=String(currentVoiceText_()||'').replace(/\s+/g,' ').trim();
@@ -1681,7 +1690,7 @@ function queueLiveCorrection_(segment){
         }
       }
     }
-  },350);
+  },Math.max(650,notBefore));
 }
 
 function arabicQuestion(data){
