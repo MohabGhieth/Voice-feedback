@@ -64,6 +64,8 @@ let liveSilentGain=null;
 let livePcmBuffer=[];
 let livePcmLength=0;
 let liveStreamStartedAt=0;
+let liveRotationTimer=null;
+let liveFinalTranscriptAt=0;
 let lastLiveTranscriptAt=0;
 let liveCloseRequested=false;
 let liveFinishWaiters=[];
@@ -874,6 +876,7 @@ function startLiveAudioPipeline_(){
 }
 
 function stopLiveAudioPipeline_(){
+  if(liveRotationTimer){clearTimeout(liveRotationTimer);liveRotationTimer=null;}
   try{if(liveProcessorNode) liveProcessorNode.disconnect();}catch(e){}
   try{if(liveSourceNode) liveSourceNode.disconnect();}catch(e){}
   try{if(liveSilentGain) liveSilentGain.disconnect();}catch(e){}
@@ -895,6 +898,7 @@ function appendLiveFinal_(text){
   speechActive=false;
   lastSpeechAt=Date.now();
   lastLiveTranscriptAt=lastSpeechAt;
+  liveFinalTranscriptAt=lastSpeechAt;
   correctedLiveText=localCorrectLive_(turnFinal);
   render();
   scheduleLiveSilence_();
@@ -931,23 +935,76 @@ function closeGeminiLive_(sendEnd){
     if(!ws){ stopLiveAudioPipeline_(); resolve(); return; }
     liveCloseRequested=true;
     let settled=false;
-    const done=()=>{if(settled)return;settled=true;clearTimeout(timer);stopLiveAudioPipeline_();liveSocket=null;liveReady=false;resolve();};
-    const timer=setTimeout(done,1800);
+    const started=Date.now();
+    const finish=()=>{
+      if(settled)return;
+      settled=true;
+      clearTimeout(timer);
+      stopLiveAudioPipeline_();
+      liveSocket=null;
+      liveReady=false;
+      resolve();
+    };
+    // inputTranscription is the authoritative final transcription event. It is
+    // delivered independently of other server messages, so do not close on a
+    // fixed 1.5s timer. Give the final event a bounded 4s window.
+    const timer=setInterval(()=>{
+      const quiet=Date.now()-Number(liveFinalTranscriptAt||0);
+      if(Date.now()-started>=4000 || (liveFinalTranscriptAt && quiet>=500)){
+        clearInterval(timer);
+        finish();
+      }
+    },100);
 
     try{
       if(sendEnd && ws.readyState===WebSocket.OPEN){
         flushLivePcm_();
         ws.send(JSON.stringify({realtimeInput:{audioStreamEnd:true}}));
+      }else if(!sendEnd){
+        try{ws.close();}catch(e){}
       }
-      ws.addEventListener('close',done,{once:true});
-      if(!sendEnd || ws.readyState!==WebSocket.OPEN){try{ws.close();}catch(e){done();}}
-      else setTimeout(()=>{try{ws.close();}catch(e){}},1500);
-    }catch(e){done();}
+      ws.addEventListener('close',()=>{
+        if(!sendEnd) finish();
+      },{once:true});
+      if(!sendEnd && ws.readyState!==WebSocket.OPEN) finish();
+    }catch(e){ finish(); }
   });
+}
+
+async function rotateGeminiLive_(){
+  if(!shouldKeepListening || processing || !liveSocket) return;
+  try{
+    // Request the replacement token before closing the current session. This
+    // avoids the short new-session-expiry window becoming a reconnect race.
+    const token=await requestGeminiLiveToken_();
+    if(!shouldKeepListening || processing) return;
+    const old=liveSocket;
+    liveCloseRequested=true;
+    try{ if(old && old.readyState===WebSocket.OPEN) old.close(); }catch(e){}
+    stopLiveAudioPipeline_();
+    liveSocket=null;
+    liveReady=false;
+    await startGeminiLiveWithToken_(token);
+  }catch(e){
+    if(shouldKeepListening && !processing){
+      showError('Gemini Live session is being reconnected. Your original audio is still being recorded.');
+    }
+  }
+}
+
+function scheduleLiveRotation_(){
+  if(liveRotationTimer) clearTimeout(liveRotationTimer);
+  // Gemini Live transcription sessions are limited to 10 minutes. Rotate well
+  // before the hard limit while the authoritative MediaRecorder continues.
+  liveRotationTimer=setTimeout(()=>{ rotateGeminiLive_(); },8*60*1000);
 }
 
 async function startGeminiLive_(){
   const token=await requestGeminiLiveToken_();
+  return startGeminiLiveWithToken_(token);
+}
+
+function startGeminiLiveWithToken_(token){
   return new Promise((resolve,reject)=>{
     const url='wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained?access_token='+encodeURIComponent(token);
     const ws=new WebSocket(url);
@@ -990,6 +1047,7 @@ async function startGeminiLive_(){
           try{
             liveReady=true;
             startLiveAudioPipeline_();
+            scheduleLiveRotation_();
             settled=true;
             status(currentMode==='answer'?'Listening for your answer...':'Listening... Gemini Live transcription is active.');
             resolve();
@@ -1035,6 +1093,7 @@ async function startListening_(newTurn){
     heardSpeech=false;
     lastSpeechAt=0;
     lastLiveTranscriptAt=0;
+    liveFinalTranscriptAt=0;
     phoneAttempts=0;
     liveCloseRequested=false;
     if(currentMode==='call') liveCorrectionSeq++;
@@ -1053,11 +1112,22 @@ async function startListening_(newTurn){
   $('stopBtn').disabled=false;
   status('بفتح Gemini Live transcription...');
 
-  // Establish Live transcription first, then start the authoritative recorder
-  // so the beginning of the turn is not lost while the WebSocket is connecting.
-  await startGeminiLive_();
-  if(!shouldKeepListening || processing) return;
+  // IMPORTANT: the authoritative recorder starts BEFORE Gemini Live connects.
+  // Gemini Live is the live transcription path; MediaRecorder is the complete
+  // original-audio record and must never lose the first seconds of a turn.
   startMediaRecorder_();
+  if(!shouldKeepListening || processing) return;
+  try{
+    await startGeminiLive_();
+  }catch(err){
+    try{ await stopMediaRecorder_(); }catch(e){}
+    shouldKeepListening=false;
+    isListening=false;
+    $('startBtn').disabled=false;
+    $('stopBtn').disabled=true;
+    throw err;
+  }
+  if(!shouldKeepListening || processing) return;
   isListening=true;
   $('modeText').textContent=currentMode==='answer'
     ? 'اتكلم براحتك. Gemini Live بيسمع وبيحوّل الإجابة لنص لحظيًا.'
