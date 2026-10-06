@@ -11,7 +11,7 @@
 </head>
 <body>
 <main class="app">
-<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — V36.21 Final / Gemini Worker Hardened / Authoritative Audio</p></div>
+<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — FINAL / Fast Gemini Worker / Authoritative Audio</p></div>
 <section class="card">
 <div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically and keeps your full paragraph.</span><div class="stage" id="stage"><span data-stage="recording">Recording</span><span data-stage="upload">Upload</span><span data-stage="transcribe">Transcribe</span><span data-stage="ai">AI Analysis</span><span data-stage="save">Save CRM</span></div></div>
 <div id="question" class="question hidden"><small>CRM asks:</small><strong id="questionText"></strong></div>
@@ -827,8 +827,11 @@ async function uploadAuthoritativeTurn_(blob){
     throw new Error(queued.message||'Could not queue transcription.');
   }
 
-  for(let i=0;i<180;i++){
-    const st=await jsonpRequest({api:'voiceAudioStatus',session:logicalSession,turnId:turnId},8000);
+  // Normal transcription should complete during the prompt worker's first run.
+  // Keep the foreground wait bounded; the durable worker continues recovery if
+  // Gemini needs longer. Never trap the user in a 30-minute polling loop.
+  for(let i=0;i<30;i++){
+    const st=await jsonpRequest({api:'voiceAudioStatus',session:logicalSession,turnId:turnId},4000);
     // Never re-queue a queued job from the browser. The first queue call
     // already schedules the prompt worker, while the durable 1-minute trigger
     // is responsible for recovery. This prevents trigger multiplication.
@@ -852,7 +855,7 @@ async function uploadAuthoritativeTurn_(blob){
   }
 
   try{localStorage.setItem('MGVOICE_PENDING_AUDIO',JSON.stringify({session:logicalSession,turnId:turnId,createdAt:Date.now()}));}catch(e){}
-  throw new Error('Transcription is still running in the background. The original recording was preserved. Do not repeat the call; you can keep this page open and wait, or return to this page later.');
+  throw new Error('Transcription is still running in the background. The original recording was preserved. Do not repeat the call; the server will continue processing it.');
 }
 
 function startSession(){
