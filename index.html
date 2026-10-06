@@ -16,7 +16,7 @@
 </head>
 <body>
 <main class="app">
-<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — V36.32 Durable Audio Recovery + Phone Input + Voice Fallback + Chunk ACK + AI Correction</p></div>
+<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — V36.37 Queue Kick Guard + Recovery Retry + Phone Recovery + Durable Audio Recovery + Phone Input + Voice Fallback + Chunk ACK + AI Correction</p></div>
 <section class="card">
 <div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically and keeps your full paragraph.</span><div class="stage" id="stage"><span data-stage="recording">Recording</span><span data-stage="upload">Upload</span><span data-stage="transcribe">Transcribe</span><span data-stage="ai">AI Analysis</span><span data-stage="save">Save CRM</span></div></div>
 <div id="question" class="question hidden"><small>CRM asks:</small><strong id="questionText"></strong><div id="phoneInputWrap" class="phoneInput hidden"><input id="phoneInput" type="tel" inputmode="tel" autocomplete="tel" placeholder="010 1234 5678" aria-label="Phone number"><button id="phoneSubmitBtn" type="button">Use This Number</button><span class="phoneHint">مش عايز تقوله صوت؟ اكتب الرقم هنا. مثال: 01012345678 أو +201012345678</span><div id="phoneInputError" class="phoneError"></div></div></div>
@@ -36,7 +36,7 @@
 </section>
 </main>
 <script>
-// V36.32: durable audio status recovery + V36.32 phone/manual fallback.
+// V36.37: queue kick guard + recovered-call retry + phone/manual fallback + durable audio recovery.
 const API='https://script.google.com/macros/s/AKfycbyawltTbaWy291FyF95S0GX6oIlnoac5FzDVxFdDSqUG3VyRoTItG4Mj8zZolxRN_GIjw/exec';
 const SILENCE_MS=3000;
 const ANSWER_SILENCE_MS=15000;
@@ -1185,8 +1185,10 @@ async function processConversation(){
     processing=false;
     $('startBtn').disabled=false;
     $('stopBtn').disabled=true;
+    if($('processRecoveredBtn')) $('processRecoveredBtn').disabled=false;
+    showRecoveredActions_();
     showError(e.message||String(e));
-    status('');
+    status('المكالمة ما زالت محفوظة؛ تقدر تحاول Process & Save مرة تانية بدون إعادة التسجيل.');
   }
 }
 
@@ -1580,6 +1582,10 @@ async function processRecoveredCall_(){
     if($('processRecoveredBtn')) $('processRecoveredBtn').disabled=false;
   }finally{
     processing=false;
+    // V36.37: never leave the recovery action permanently disabled after a retry/failure.
+    if($('processRecoveredBtn') && logicalSession && Array.isArray(conversation) && conversation.length){
+      $('processRecoveredBtn').disabled=false;
+    }
   }
 }
 
