@@ -97,6 +97,8 @@ let manualPhoneSubmitting=false;
 let liveCorrectionTimer=null;
 let liveCorrectionSeq=0;
 let liveCorrectionInput='';
+let liveCorrectionLastSent='';
+let liveCorrectionInFlight=false;
 let correctedLiveText='';
 let newLeadIntroPending=false;
 let questionIntroPlayed=false;
@@ -987,6 +989,49 @@ async function uploadAuthoritativeTurn_(blob,ctx){
     fr.readAsDataURL(chunk);
   });
 
+  // Safari/iPhone + Apps Script deployment URLs can redirect a cross-origin
+  // POST before the body reaches doPost(). A fetch() in no-cors mode gives us
+  // an opaque response and, on some Safari/Apps Script combinations, the POST
+  // is converted/lost during that redirect. Use a real HTML form submission
+  // for the transport instead. The server-side status endpoint remains the
+  // ACK authority, so this never trusts the form navigation itself as success.
+  const postVoiceForm=(postApi,payload)=>new Promise((resolve,reject)=>{
+    const frameId='mgVoiceUploadFrame_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7);
+    const form=document.createElement('form');
+    const frame=document.createElement('iframe');
+    form.method='POST';
+    form.action=API+'?api='+encodeURIComponent(postApi);
+    form.target=frameId;
+    form.style.display='none';
+    frame.name=frameId;
+    frame.id=frameId;
+    frame.style.display='none';
+    const input=document.createElement('textarea');
+    input.name='payload';
+    input.value=payload;
+    input.style.display='none';
+    form.appendChild(input);
+    document.body.appendChild(frame);
+    document.body.appendChild(form);
+    let submitted=false;
+    const cleanup=()=>{
+      setTimeout(()=>{try{form.remove();}catch(e){} try{frame.remove();}catch(e){}},30000);
+    };
+    try{
+      form.submit();
+      submitted=true;
+    }catch(e){
+      try{form.remove();frame.remove();}catch(e2){}
+      reject(e);
+      return;
+    }
+    cleanup();
+    // The form navigation itself is deliberately NOT treated as an ACK.
+    // Give Safari a moment to dispatch the POST, then let the durable status
+    // poll below decide whether the exact chunk reached Apps Script.
+    setTimeout(()=>resolve(submitted),1200);
+  });
+
   // The old architecture sent the entire recording as one large no-cors POST.
   // On iPhone/Safari that request could remain opaque/pending while Apps Script
   // decoded Base64 and wrote Drive. V36.24 uses idempotent small chunks instead.
@@ -1005,13 +1050,11 @@ async function uploadAuthoritativeTurn_(blob,ctx){
     let sent=false;
     for(let attempt=1;attempt<=5 && !sent;attempt++){
       try{
-        // no-cors fetch responses are opaque; a resolved fetch is NOT an ACK.
-        // The exact chunk must be confirmed independently by the server.
-        fetch(API+'?api=voiceAudioChunk',{
-          method:'POST',mode:'no-cors',
-          headers:{'Content-Type':'text/plain;charset=UTF-8'},
-          body:payload
-        }).catch(()=>{});
+        // Do not use cross-origin fetch for the authoritative chunk transport.
+        // Safari can lose a POST body across the Apps Script redirect. The form
+        // transport preserves the POST body; the server status check below is
+        // still the only accepted ACK.
+        await postVoiceForm('voiceAudioChunk',payload);
 
         const ackDeadline=Date.now()+15000;
         while(Date.now()<ackDeadline){
@@ -1024,6 +1067,9 @@ async function uploadAuthoritativeTurn_(blob,ctx){
               chunkIndex:i,
               totalChunks:totalChunks
             },5000);
+            if(ack && ack.errorCode==='AUTH_REQUIRED'){
+              throw new Error('Google authorization is required for the Voice CRM backend. Open the Apps Script URL once in Safari, authorize the Google account, then return to MG RESALE.');
+            }
             if(ack && ack.turnId===turnId && Number(ack.chunkIndex)===i && ack.received===true){
               sent=true;
               break;
@@ -1031,7 +1077,9 @@ async function uploadAuthoritativeTurn_(blob,ctx){
             if(ack && ack.state==='error' && ack.retryable===false){
               throw new Error(ack.message||'Audio chunk status failed.');
             }
-          }catch(statusErr){}
+          }catch(statusErr){
+            if(String(statusErr&&statusErr.message||'').indexOf('Google authorization is required')===0) throw statusErr;
+          }
         }
       }catch(e){}
       if(!sent && attempt<5) await new Promise(r=>setTimeout(r,750*attempt));
@@ -1059,14 +1107,7 @@ async function uploadAuthoritativeTurn_(blob,ctx){
     });
     try{
       assertVoiceContextCurrent_(ctx);
-      await Promise.race([
-        fetch(API+'?api=voiceAudioFinalize',{
-          method:'POST',mode:'no-cors',
-          headers:{'Content-Type':'text/plain;charset=UTF-8'},
-          body:finalizePayload
-        }).catch(()=>null),
-        new Promise(resolve=>setTimeout(resolve,12000))
-      ]);
+      await postVoiceForm('voiceAudioFinalize',finalizePayload);
     }catch(e){}
 
     const deadline=Date.now()+15000;
@@ -1104,6 +1145,9 @@ async function uploadAuthoritativeTurn_(blob,ctx){
   try{
     queueResult=await jsonpRequest({api:'voiceAudioQueue',session:ctx.session,turnId:turnId},12000);
   }catch(queueErr){
+    if(String(queueErr&&queueErr.message||'').indexOf('AUTH_REQUIRED')>=0){
+      throw new Error('Google authorization is required for the Voice CRM backend. Open the Apps Script URL once in Safari, authorize the Google account, then return to MG RESALE.');
+    }
     status('الـqueue request اتأخر؛ بستنى حالة التسجيل من السيرفر بدل ما أعتبره فشل.');
   }
   assertVoiceContextCurrent_(ctx);
@@ -1126,6 +1170,9 @@ async function uploadAuthoritativeTurn_(blob,ctx){
       status('الـstatus request اتأخر؛ التسجيل محفوظ، وبجرب تاني...');
       await new Promise(r=>setTimeout(r,2500));
       continue;
+    }
+    if(st && st.errorCode==='AUTH_REQUIRED'){
+      throw new Error('Google authorization is required for the Voice CRM backend. Open the Apps Script URL once in Safari, authorize the Google account, then return to MG RESALE.');
     }
     if(st && st.turnId===turnId && st.state==='ready' && st.transcript){
       assertVoiceContextCurrent_(ctx);
@@ -1527,48 +1574,70 @@ function queueLiveCorrection_(segment){
   const text=String(segment||currentVoiceText_()).replace(/\s+/g,' ').trim();
   if(!text) return;
 
-  // The local correction is immediate; Gemini is the asynchronous quality
-  // pass. Only the newest request may update the visible live correction.
+  // Local cleanup is immediate. Gemini correction is deliberately THROTTLED,
+  // not debounced: SpeechRecognition can emit results faster than 650ms, and
+  // the old debounce kept cancelling itself forever during continuous speech.
   const local=localCorrectLive_(text);
-  correctedLiveText=(local!==text) ? local : '';
+  correctedLiveText=(local!==text) ? local : correctedLiveText;
+  liveCorrectionInput=text;
   render();
 
-  clearTimeout(liveCorrectionTimer);
-  const requestSeq=++liveCorrectionSeq;
+  if(text.length<4) return;
+  if(liveCorrectionInFlight || liveCorrectionTimer) return;
+  if(text===liveCorrectionLastSent) return;
+
+  const requestSeq=liveCorrectionSeq;
   const generation=voiceOperationGeneration;
   const session=String(logicalSession||'');
-  liveCorrectionInput=text;
-
-  // Avoid spending a Gemini call on a tiny fragment or the exact same text.
-  if(text.length<4) return;
 
   liveCorrectionTimer=setTimeout(async function(){
+    liveCorrectionTimer=null;
     if(requestSeq!==liveCorrectionSeq || generation!==voiceOperationGeneration ||
        processing || currentMode!=='call' || phoneMode) return;
 
-    const liveNow=currentVoiceText_();
-    if(!liveNow || liveNow!==text || liveCorrectionInput!==text) return;
+    const latest=String(currentVoiceText_()||'').replace(/\s+/g,' ').trim();
+    if(!latest || latest===liveCorrectionLastSent) return;
+
+    const requestText=latest;
+    liveCorrectionLastSent=requestText;
+    liveCorrectionInFlight=true;
 
     try{
       const data=await jsonpRequest({
         api:'voiceCorrect',
         session:session,
-        text:text
+        text:requestText
       },9000);
 
       if(requestSeq!==liveCorrectionSeq || generation!==voiceOperationGeneration ||
          processing || currentMode!=='call' || phoneMode) return;
 
       const corrected=String(data&&data.corrected||'').trim();
+      const liveNow=String(currentVoiceText_()||'').replace(/\s+/g,' ').trim();
       if(corrected){
-        correctedLiveText=corrected;
+        // If speech continued while Gemini was working, keep the newest raw
+        // tail visible instead of replacing it with a stale partial sentence.
+        if(liveNow===requestText){
+          correctedLiveText=corrected;
+        }else if(liveNow.indexOf(requestText)===0){
+          const tail=liveNow.slice(requestText.length).replace(/^\s+/,'');
+          correctedLiveText=(corrected+(tail?' '+tail:'' )).trim();
+        }
         render();
       }
     }catch(e){
-      // Live correction is enhancement-only. Recognition and authoritative
-      // recording must continue even if Gemini correction is unavailable.
+      // Enhancement only. Recording/transcription must never depend on Gemini.
+    }finally{
+      liveCorrectionInFlight=false;
+      if(requestSeq===liveCorrectionSeq && generation===voiceOperationGeneration &&
+         !processing && currentMode==='call' && !phoneMode){
+        const next=String(currentVoiceText_()||'').replace(/\s+/g,' ').trim();
+        if(next && next!==liveCorrectionLastSent){
+          queueLiveCorrection_(next);
+        }
+      }
     }
-  },650);
+  },350);
 }
 
 function arabicQuestion(data){
