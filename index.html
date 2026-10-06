@@ -96,6 +96,7 @@ let manualPhoneSubmitting=false;
 
 let liveCorrectionTimer=null;
 let liveCorrectionSeq=0;
+let liveCorrectionInput='';
 let correctedLiveText='';
 let newLeadIntroPending=false;
 let questionIntroPlayed=false;
@@ -612,7 +613,8 @@ function createRecognition_(){
     lastSpeechAt=Date.now();
     clearTimeout(silenceTimer);
 
-    // Live canonicalization is local/non-blocking.
+    // Immediate local cleanup keeps the UI responsive; Gemini AI correction
+    // is debounced below and never blocks recognition/recording.
     if(currentMode==='call' && !phoneMode){
       const raw=currentVoiceText_();
       const corrected=localCorrectLive_(raw);
@@ -624,9 +626,10 @@ function createRecognition_(){
     // Silence starts only AFTER actual recognition text exists.
     scheduleRealSilence_();
 
-    // Do not make a network call while the user is still talking.
-    if(newestFinal && currentMode==='call' && !phoneMode){
-      queueLiveCorrection_(newestFinal);
+    // AI correction runs while the turn is still live. It is generation-safe
+    // and debounced so iPhone does not get a request for every interim token.
+    if(currentMode==='call' && !phoneMode){
+      queueLiveCorrection_(currentVoiceText_());
     }
   };
 
@@ -739,6 +742,7 @@ function startListening_(newTurn){
     turnFinal='';
     turnInterim='';
     correctedLiveText='';
+    liveCorrectionInput='';
     speechActive=false;
     heardSpeech=false;
     lastSpeechAt=0;
@@ -1103,8 +1107,12 @@ async function uploadAuthoritativeTurn_(blob,ctx){
     status('الـqueue request اتأخر؛ بستنى حالة التسجيل من السيرفر بدل ما أعتبره فشل.');
   }
   assertVoiceContextCurrent_(ctx);
-  if(queueResult && queueResult.state==='error' && queueResult.retryable===false){
-    throw new Error(queueResult.message||'Could not queue transcription.');
+  if(queueResult && queueResult.state==='error'){
+    if(queueResult.code==='AUDIO_WORKER_NOT_READY'){
+      status('التسجيل محفوظ. الـbackground worker محتاج authorization مرة واحدة من Apps Script؛ ما تعيدش التسجيل.');
+    }else if(queueResult.retryable===false){
+      throw new Error(queueResult.message||'Could not queue transcription.');
+    }
   }
 
   // Background transcription/correction can legitimately outlive one JSONP
@@ -1515,9 +1523,52 @@ function localCorrectLive_(text){
 }
 
 function queueLiveCorrection_(segment){
-  if(currentMode!=='call' || phoneMode) return;
-  correctedLiveText=localCorrectLive_(currentVoiceText_());
+  if(currentMode!=='call' || phoneMode || processing) return;
+  const text=String(segment||currentVoiceText_()).replace(/\s+/g,' ').trim();
+  if(!text) return;
+
+  // The local correction is immediate; Gemini is the asynchronous quality
+  // pass. Only the newest request may update the visible live correction.
+  const local=localCorrectLive_(text);
+  correctedLiveText=(local!==text) ? local : '';
   render();
+
+  clearTimeout(liveCorrectionTimer);
+  const requestSeq=++liveCorrectionSeq;
+  const generation=voiceOperationGeneration;
+  const session=String(logicalSession||'');
+  liveCorrectionInput=text;
+
+  // Avoid spending a Gemini call on a tiny fragment or the exact same text.
+  if(text.length<4) return;
+
+  liveCorrectionTimer=setTimeout(async function(){
+    if(requestSeq!==liveCorrectionSeq || generation!==voiceOperationGeneration ||
+       processing || currentMode!=='call' || phoneMode) return;
+
+    const liveNow=currentVoiceText_();
+    if(!liveNow || liveNow!==text || liveCorrectionInput!==text) return;
+
+    try{
+      const data=await jsonpRequest({
+        api:'voiceCorrect',
+        session:session,
+        text:text
+      },9000);
+
+      if(requestSeq!==liveCorrectionSeq || generation!==voiceOperationGeneration ||
+         processing || currentMode!=='call' || phoneMode) return;
+
+      const corrected=String(data&&data.corrected||'').trim();
+      if(corrected){
+        correctedLiveText=corrected;
+        render();
+      }
+    }catch(e){
+      // Live correction is enhancement-only. Recognition and authoritative
+      // recording must continue even if Gemini correction is unavailable.
+    }
+  },650);
 }
 
 function arabicQuestion(data){
