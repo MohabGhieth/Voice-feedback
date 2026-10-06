@@ -11,7 +11,7 @@
 </head>
 <body>
 <main class="app">
-<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — V36.19 Fast Status / Background Worker Hardened / Background Transcription</p></div>
+<div class="brand"><h1>MG RESALE</h1><p>Voice Mode — V36.21 Final / Gemini Worker Hardened / Authoritative Audio</p></div>
 <section class="card">
 <div class="mode"><b id="modeTitle">Ready</b><br><span id="modeText">Tap Start Voice once. Speak naturally. After 3 seconds of silence, the CRM processes your turn automatically and keeps your full paragraph.</span><div class="stage" id="stage"><span data-stage="recording">Recording</span><span data-stage="upload">Upload</span><span data-stage="transcribe">Transcribe</span><span data-stage="ai">AI Analysis</span><span data-stage="save">Save CRM</span></div></div>
 <div id="question" class="question hidden"><small>CRM asks:</small><strong id="questionText"></strong></div>
@@ -829,9 +829,9 @@ async function uploadAuthoritativeTurn_(blob){
 
   for(let i=0;i<180;i++){
     const st=await jsonpRequest({api:'voiceAudioStatus',session:logicalSession,turnId:turnId},8000);
-    if(st && st.state==='queued' && i%5===0){
-      try{ await jsonpRequest({api:'voiceAudioQueue',session:logicalSession,turnId:turnId},20000); }catch(e){}
-    }
+    // Never re-queue a queued job from the browser. The first queue call
+    // already schedules the prompt worker, while the durable 1-minute trigger
+    // is responsible for recovery. This prevents trigger multiplication.
     if(st && st.turnId===turnId && st.state==='ready'){
       const tr=await jsonpRequest({api:'voiceAudioTranscript',session:logicalSession,turnId:turnId},12000);
       if(tr && tr.state==='ready' && tr.transcript){ try{localStorage.removeItem('MGVOICE_PENDING_AUDIO');}catch(e){} return tr.transcript; }
