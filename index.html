@@ -232,7 +232,7 @@ body[data-stage="recording"] .mic::before{
 const API='https://script.google.com/macros/s/AKfycbw1HpxGs1wlJZBuolt98emJ3MCRadzQ7j8hw2jWSCdDZ_Bkak5IauXSwR0dhYKM5yb1mA/exec';
 // Silence before the story is treated as finished. Long on purpose so a pause
 // to think never ends the call; "إنهاء وحفظ" ends it right away.
-const SILENCE_MS=8000;
+const SILENCE_MS=6000;   // V36.32: 6 seconds of silence ends the story
 const ANSWER_SILENCE_MS=15000;
 const PHONE_SILENCE_MS=15000;
 const CHUNK_SIZE=900;
@@ -1454,22 +1454,31 @@ function isPhoneQuestion_(text){
 // V36.31: questions that accept the LAST 4 digits (old lead) as well as a full number.
 function allowsLast4_(text){ return /(?:آخر|اخر)\s*(?:أربع|اربع|4)/.test(String(text||'')); }
 
+// V36.32: "صفر"/"زيرو" were not understood (a spoken 01... lost its zeros and was
+// rejected), "تلاته/اربعه/خمسه" were ignored, and "الواحد" inside a word was read as 1.
 function normalizeSpokenDigits_(text){
   let s=String(text||'').toLowerCase().trim();
-  const words={
-    zero:'0',oh:'0',o:'0',one:'1',two:'2',three:'3',four:'4',five:'5',
-    six:'6',seven:'7',eight:'8',nine:'9',
-    'واحد':'1','واحدة':'1','اتنين':'2','اثنين':'2','تلاتة':'3','ثلاثة':'3',
-    'اربعة':'4','أربعة':'4','خمسة':'5','ستة':'6','سته':'6',
-    'سبعة':'7','سبعه':'7','تمانية':'8','ثمانية':'8','تسعة':'9','تسعه':'9'
-  };
-  Object.keys(words).forEach(w=>{
-    s=s.replace(
-      new RegExp('(^|[^a-zA-Z\\\\u0600-\\\\u06FF])'+w+'(?=$|[^a-zA-Z\\\\u0600-\\\\u06FF])','gi'),
-      '$1'+words[w]
-    );
-  });
   s=s.replace(/[٠-٩]/g,d=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+  // "آخر أربع(ة) أرقام" is part of the sentence, not a digit.
+  s=s.replace(/(?:آخر|اخر)\s*(?:أربع[ةه]?|اربع[ةه]?|4|four)\s*(?:أرقام|ارقام|digits?)?/g,' ');
+  const words={
+    zero:'0',oh:'0',one:'1',two:'2',three:'3',four:'4',five:'5',
+    six:'6',seven:'7',eight:'8',nine:'9',
+    'صفر':'0','زيرو':'0',
+    'واحد':'1','واحدة':'1','واحده':'1',
+    'اتنين':'2','اثنين':'2','اتنان':'2','اثنان':'2',
+    'تلاتة':'3','تلاته':'3','ثلاثة':'3','ثلاثه':'3',
+    'اربعة':'4','أربعة':'4','اربعه':'4','أربعه':'4',
+    'خمسة':'5','خمسه':'5',
+    'ستة':'6','سته':'6',
+    'سبعة':'7','سبعه':'7',
+    'تمانية':'8','تمانيه':'8','ثمانية':'8','ثمانيه':'8',
+    'تسعة':'9','تسعه':'9'
+  };
+  const B='[^a-z\\u0600-\\u06FF]';
+  Object.keys(words).sort((a,b)=>b.length-a.length).forEach(w=>{
+    s=s.replace(new RegExp('(^|'+B+')'+w+'(?=$|'+B+')','g'),'$1'+words[w]);
+  });
   return s.replace(/[^0-9]/g,'');
 }
 
