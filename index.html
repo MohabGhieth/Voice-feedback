@@ -858,28 +858,62 @@ async function uploadAuthoritativeTurn_(blob){
     fr.readAsDataURL(blob);
   });
 
-  status('برفع التسجيل ('+(blob.size/1048576).toFixed(2)+' ميجا)...');
-  await fetch(API+'?api=voiceAudio',{
-    method:'POST',mode:'no-cors',
-    headers:{'Content-Type':'text/plain;charset=UTF-8'},
-    body:JSON.stringify({auth:authState.token,session:logicalSession,turnId:turnId,sequence:audioTurnCounter,mimeType:blob.type||audioMimeType,audioBase64:b64,turnType:(currentMode==='answer'?(phoneMode?'answer_phone':'answer'):'feedback'),question:(currentMode==='answer'?questionText:'')})
-  });
+  const postBody=JSON.stringify({auth:authState.token,session:logicalSession,turnId:turnId,sequence:audioTurnCounter,mimeType:blob.type||audioMimeType,audioBase64:b64,turnType:(currentMode==='answer'?(phoneMode?'answer_phone':'answer'):'feedback'),question:(currentMode==='answer'?questionText:'')});
+  const sizeTxt=(blob.size/1048576).toFixed(2)+' ميجا';
 
-  let uploadStored=false;
-  for(let i=0;i<60;i++){
+  // ONE REQUEST: the server stores the recording, transcribes it, and returns the
+  // text in the same reply. If the browser can't read that reply, we fall back to
+  // the older confirm/queue/poll steps below (the upload itself is never repeated twice).
+  setStage_('transcribe');
+  $('modeTitle').textContent='بفرّغ التسجيل';
+  $('modeText').textContent='التسجيل بيترفع ويتفرّغ في خطوة واحدة.';
+  status('التسجيل ('+sizeTxt+') بيترفع ويتفرّغ...');
+  let direct=null;
+  try{
+    const ctrl=('AbortController' in window)?new AbortController():null;
+    const killer=setTimeout(()=>{ try{ctrl&&ctrl.abort();}catch(e){} },150000);
+    const res=await fetch(API+'?api=voiceAudio',{method:'POST',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:postBody,redirect:'follow',signal:ctrl?ctrl.signal:undefined});
+    clearTimeout(killer);
+    direct=JSON.parse(await res.text());
+  }catch(e){ direct=null; }
+
+  if(direct && direct.errorCode && AUTH_CODES_.indexOf(direct.errorCode)>=0){
+    authLost_(direct.message); throw Object.assign(new Error(direct.message||'محتاج تسجيل دخول.'),{authError:true});
+  }
+  if(direct && direct.turnId===turnId){
+    if(direct.state==='ready' && direct.transcript){
+      try{localStorage.removeItem('MGVOICE_PENDING_AUDIO');}catch(e){}
+      return String(direct.transcript);
+    }
+    if(direct.state==='error' && direct.retryable===false) throw new Error(direct.message||'التفريغ فشل.');
+  }
+
+  let uploadStored=!!(direct && direct.turnId===turnId && direct.state && direct.state!=='error');
+  let resent=false;
+  for(let i=0;!uploadStored && i<60;i++){
     await new Promise(r=>setTimeout(r,500));
     let st=null;
     try{
-      st=await jsonpRequest({api:'voiceAudioStatus',session:logicalSession,turnId:turnId},15000);
+      st=await jsonpRequest({api:'voiceAudioStatus',session:logicalSession,turnId:turnId},6000);
     }catch(e){
       if(e.authError) throw e;
       if(i>=59) throw new Error('مقدرتش أأكد إن التسجيل اترفع. ممكن يكون وصل السيرفر، ما تعيدش المكالمة.');
       continue;
     }
+    if(st && st.turnId===turnId && st.state==='ready'){
+      if(st.transcript){ try{localStorage.removeItem('MGVOICE_PENDING_AUDIO');}catch(e){} return String(st.transcript); }
+    }
     if(st && st.turnId===turnId && st.state && st.state!=='waiting'){
-      if(st.state==='error') throw new Error(st.message||'رفع التسجيل فشل.');
+      if(st.state==='error' && st.retryable===false) throw new Error(st.message||'رفع التسجيل فشل.');
       uploadStored=true;
       break;
+    }
+    // Still not on the server after ~8 s: the first send was lost, send once more
+    // (the server ignores a duplicate of the same recording).
+    if(i===15 && !resent){
+      resent=true;
+      status('بعيد إرسال التسجيل...');
+      try{ await fetch(API+'?api=voiceAudio',{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:postBody}); }catch(e){}
     }
   }
   if(!uploadStored) throw new Error('رفع التسجيل ما اتأكدش. ممكن يكون وصل السيرفر، ما تعيدش المكالمة.');
@@ -904,7 +938,7 @@ async function uploadAuthoritativeTurn_(blob){
   let pollFails=0, requeues=0;
   for(let i=0;i<180;i++){
     let st=null;
-    try{ st=await jsonpRequest({api:'voiceAudioStatus',session:logicalSession,turnId:turnId},15000); pollFails=0; }
+    try{ st=await jsonpRequest({api:'voiceAudioStatus',session:logicalSession,turnId:turnId},6000); pollFails=0; }
     catch(e){
       if(e.authError) throw e;
       if(++pollFails>=8) break;
