@@ -1198,6 +1198,17 @@ const sleep_=ms=>new Promise(r=>setTimeout(r,ms));
 // The Gemini analysis can take a while. The first request gets a long timeout;
 // if it still times out, later requests just collect the cached result (the server
 // keeps working and caches it), so a slow analysis never ends in an error.
+async function processDirect_(session,transcript){
+  try{
+    const ctrl=('AbortController' in window)?new AbortController():null;
+    const killer=setTimeout(()=>{ try{ctrl&&ctrl.abort();}catch(e){} },200000); // up to 3 models x 45 s on the server
+    const res=await fetch(API+'?api=voiceProcessDirect',{method:'POST',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:JSON.stringify({auth:authState.token,session:session,transcript:transcript}),redirect:'follow',signal:ctrl?ctrl.signal:undefined});
+    clearTimeout(killer);
+    const data=JSON.parse(await res.text());
+    return (data && typeof data==='object') ? data : null;
+  }catch(e){ return null; }
+}
+
 async function callProcess_(session){
   const deadline=Date.now()+4*60*1000;
   let first=true;
@@ -1251,6 +1262,15 @@ async function processConversation(){
   const chunks=[];
   for(let i=0;i<transcript.length;i+=CHUNK_SIZE) chunks.push(transcript.slice(i,i+CHUNK_SIZE));
 
+  // ONE REQUEST: send the whole conversation and get the result in the same reply.
+  // Falls back to the older chunk + JSONP path only if the browser can't read the reply.
+  status('Gemini بيحلل المكالمة ويحفظها...');
+  const direct=await processDirect_(session,transcript);
+  if(direct){
+    if(direct.errorCode && AUTH_CODES_.indexOf(direct.errorCode)>=0){ authLost_(direct.message); return; }
+    if(!direct.retry){ handleResult(direct); return; }
+  }
+
   try{
     for(let start=0; start<chunks.length; start+=CHUNK_CONCURRENCY){
       const batch=[];
@@ -1260,9 +1280,8 @@ async function processConversation(){
       await Promise.all(batch);
     }
 
-    setStage_('save');
-    $('modeTitle').textContent='بحفظ في الـ CRM';
-    status('بحفظ بيانات المكالمة...');
+    $('modeTitle').textContent='بحلل وبحفظ في الـ CRM';
+    status('بحلل وبحفظ بيانات المكالمة...');
 
     const result=await callProcess_(session);
     handleResult(result);
