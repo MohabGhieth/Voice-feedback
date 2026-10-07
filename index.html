@@ -216,7 +216,9 @@ body[data-stage="recording"] .mic::before{
 
 <script>
 const API='https://script.google.com/macros/s/AKfycbw1HpxGs1wlJZBuolt98emJ3MCRadzQ7j8hw2jWSCdDZ_Bkak5IauXSwR0dhYKM5yb1mA/exec';
-const SILENCE_MS=3000;
+// Silence before the story is treated as finished. Long on purpose so a pause
+// to think never ends the call; "إنهاء وحفظ" ends it right away.
+const SILENCE_MS=8000;
 const ANSWER_SILENCE_MS=15000;
 const PHONE_SILENCE_MS=15000;
 const CHUNK_SIZE=900;
@@ -246,6 +248,7 @@ let questionText='';
 let conversation=[];
 let logicalSession='';
 let mediaStream=null;
+let noTextHintTimer=null;
 let mediaRecorder=null;
 let audioParts=[];
 let audioMimeType='audio/webm';
@@ -609,6 +612,11 @@ function createRecognition_(){
 
     $('modeTitle').textContent=currentMode==='answer' ? 'سامع إجابتك' : 'بسجّل';
     setStage_('recording');
+    clearTimeout(noTextHintTimer);
+    noTextHintTimer=setTimeout(()=>{
+      if(shouldKeepListening && !processing && !currentVoiceText_())
+        status('الكلام مش ظاهر على الشاشة، بس صوتك بيتسجّل عادي. لما تخلص دوس "إنهاء وحفظ".');
+    },8000);
     $('modeText').textContent=currentMode==='answer'
       ? 'تمام، سامعك. خد وقتك ورد عليا براحتك، ومش هقاطعك.'
       : 'سامعك. اتكلم براحتك، وأنا هجمع القصة كلها قبل ما أحفظها.';
@@ -634,6 +642,7 @@ function createRecognition_(){
 
     if(!newestFinal && !turnInterim) return;
 
+    clearTimeout(noTextHintTimer);
     heardSpeech=true;
     lastSpeechAt=Date.now();
     clearTimeout(silenceTimer);
@@ -647,9 +656,9 @@ function createRecognition_(){
   };
 
   r.onspeechstart=()=>{ if(!shouldKeepListening) return; speechActive=true; clearTimeout(silenceTimer); };
-  r.onspeechend=()=>{ speechActive=false; if(shouldKeepListening && currentVoiceText_()) scheduleRealSilence_(); };
+  r.onspeechend=()=>{ speechActive=false; if(shouldKeepListening && currentVoiceText_()){ lastSpeechAt=Date.now(); scheduleRealSilence_(); } };
   r.onsoundstart=()=>{ if(!shouldKeepListening) return; speechActive=true; clearTimeout(silenceTimer); };
-  r.onsoundend=()=>{ speechActive=false; if(shouldKeepListening && currentVoiceText_()) scheduleRealSilence_(); };
+  r.onsoundend=()=>{ speechActive=false; if(shouldKeepListening && currentVoiceText_()){ lastSpeechAt=Date.now(); scheduleRealSilence_(); } };
   r.onaudioend=()=>{};
 
   r.onerror=e=>{
@@ -740,25 +749,37 @@ function startListening_(newTurn){
   }
 }
 
+// iPhone fix: never keep the mic open between turns. A stream held from an earlier
+// turn goes stale on iOS, and then the live speech recognition hears nothing.
+function releaseMediaStream_(){
+  if(mediaStream){ try{ mediaStream.getTracks().forEach(t=>t.stop()); }catch(e){} }
+  mediaStream=null;
+}
+
 async function ensureMediaRecorder_(){
   if(mediaRecorder && mediaRecorder.state==='recording') return;
-  if(!mediaStream){
+  const live=mediaStream && mediaStream.getAudioTracks().some(t=>t.readyState==='live');
+  if(!live){
+    releaseMediaStream_();
     mediaStream=await navigator.mediaDevices.getUserMedia({audio:true});
   }
   const preferred=['audio/webm;codecs=opus','audio/webm','audio/mp4'];
   const chosen=preferred.find(t=>window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
   audioMimeType=chosen||'audio/webm';
   audioParts=[];
-  mediaRecorder=new MediaRecorder(mediaStream, chosen?{mimeType:chosen}:undefined);
-  mediaRecorder.ondataavailable=e=>{ if(e.data&&e.data.size) audioParts.push(e.data); };
+  const rec=new MediaRecorder(mediaStream, chosen?{mimeType:chosen}:undefined);
+  mediaRecorder=rec;
+  // Only the current recorder may add audio, so a late chunk from an old recording
+  // can never leak into the next call.
+  rec.ondataavailable=e=>{ if(rec===mediaRecorder && e.data && e.data.size) audioParts.push(e.data); };
   mediaRecorder.start();
 }
 
 function stopMediaRecorder_(){
   return new Promise(resolve=>{
-    if(!mediaRecorder || mediaRecorder.state==='inactive') return resolve(new Blob(audioParts,{type:audioMimeType}));
+    if(!mediaRecorder || mediaRecorder.state==='inactive'){ releaseMediaStream_(); return resolve(new Blob(audioParts,{type:audioMimeType})); }
     const r=mediaRecorder;
-    const done=()=>resolve(new Blob(audioParts,{type:r.mimeType||audioMimeType}));
+    const done=()=>{ const b=new Blob(audioParts,{type:r.mimeType||audioMimeType}); releaseMediaStream_(); resolve(b); };
     r.addEventListener('stop',done,{once:true});
     try{r.stop();}catch(e){done();}
   });
@@ -930,7 +951,13 @@ async function finishTurn_(reason){
   status(phoneMode ? 'خلصت الرقم. برفع التسجيل...' : 'برفع التسجيل الأصلي...');
   render();
 
-  if(!t){
+  // The recording is the source of truth. If the live recognition showed nothing
+  // (it sometimes goes silent on iPhone) but the mic captured real audio, still send it.
+  let audioBlob=null;
+  try{ audioBlob=await stopMediaRecorder_(); }catch(e){ audioBlob=null; }
+  audioParts=[];
+
+  if(!t && (!audioBlob || audioBlob.size<15000)){
     processing=false;
     turnFinal=''; turnInterim=''; lastSpeechAt=0; resetLiveCorrection_();
     $('startBtn').disabled=false;
@@ -943,7 +970,6 @@ async function finishTurn_(reason){
 
   let authoritativeText='';
   try{
-    const audioBlob=await stopMediaRecorder_();
     authoritativeText=await uploadAuthoritativeTurn_(audioBlob);
   }catch(err){
     processing=false; $('startBtn').disabled=false; $('stopBtn').disabled=true;
@@ -1430,6 +1456,9 @@ function reset(){
   try{if(recognition) recognition.abort();}catch(e){}
   try{speechSynthesis.cancel();}catch(e){}
   try{ if(mediaRecorder && mediaRecorder.state!=='inactive') mediaRecorder.stop(); }catch(e){}
+  mediaRecorder=null;
+  audioParts=[];
+  releaseMediaStream_();
   stopVAD_();
 
   recognition=null;
