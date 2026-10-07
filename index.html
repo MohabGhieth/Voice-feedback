@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0A1020">
-<title>MG RESALE — Voice CRM</title>
+<title>Mohab Pipeline Feedback</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -177,9 +177,9 @@ body[data-stage="recording"] .mic::before{
 <body data-stage="">
 <div id="authOverlay" class="overlay hidden">
   <div class="auth-card">
-    <div class="logo">MG</div>
+    <div class="logo">MP</div>
     <h2>تسجيل الدخول</h2>
-    <p id="authMsg">سجّل دخولك بحساب Google المصرّح له عشان تفتح MG RESALE Voice CRM.</p>
+    <p id="authMsg">سجّل دخولك بحساب Google المصرّح له عشان تفتح Mohab Pipeline Feedback.</p>
     <div id="gBtn"></div>
     <div id="authErr" class="error hidden"></div>
   </div>
@@ -187,7 +187,7 @@ body[data-stage="recording"] .mic::before{
 
 <main class="app">
   <header class="topbar">
-    <div class="brand"><div class="logo">MG</div><div><b>MG RESALE</b><small>Voice CRM</small></div></div>
+    <div class="brand"><div class="logo">MP</div><div><b>Mohab Pipeline</b><small>Feedback</small></div></div>
     <div class="user"><span id="userEmail"></span><button id="signOutBtn" class="ghost hidden" type="button">خروج</button></div>
   </header>
 
@@ -475,7 +475,7 @@ function render(){
 
   conversation.forEach(function(line){
     const s=String(line||'');
-    if(/^QUESTION\s*:/i.test(s) || /^ANSWER\s*:/i.test(s)) return;
+    if(/^QUESTION\s*:/i.test(s) || /^ANSWER\s*:/i.test(s) || /^META\s*:/i.test(s)) return;
     const saved=/^CORRECTED FEEDBACK\s*:/i.test(s);
     const text=maskConversationForDisplay_(s.replace(/^(CORRECTED FEEDBACK|FEEDBACK)\s*:\s*/i,''));
     if(!text) return;
@@ -1191,6 +1191,7 @@ async function finishTurn_(reason){
 
   let authoritativeText='';
   let turnErr=null;
+  let usedLiveTextFallback=false;
   try{
     authoritativeText=await uploadAuthoritativeTurn_(audioBlob);
     if(myGen!==turnGen) return; // a typed answer replaced this voice answer
@@ -1198,6 +1199,7 @@ async function finishTurn_(reason){
     if(myGen!==turnGen) return;
     turnErr=err;
     if(err && !err.authError && liveBest && liveBest.length>=8){
+      usedLiveTextFallback=true;
       // Gemini is down/overloaded: keep going with the live text instead of failing.
       console.warn('Using live text, transcription failed: '+(err&&err.message));
       authoritativeText=liveBest;
@@ -1265,6 +1267,9 @@ async function finishTurn_(reason){
     return;
   }
 
+  // V36.32: tell the server this story is the phone's live text (Gemini couldn't
+  // transcribe the recording), so it may use its corrected copy instead.
+  if(usedLiveTextFallback && conversation.indexOf('META: LIVE_TEXT')<0) conversation.push('META: LIVE_TEXT');
   conversation.push('FEEDBACK: '+authoritativeText);
   render();
   processConversation();
