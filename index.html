@@ -290,9 +290,25 @@ let questionIntroPlayed=false;
 const $=id=>document.getElementById(id);
 const STAGE_ORDER_=['recording','upload','transcribe','ai','save'];
 
-function status(t){ $('status').textContent=t||''; }
+// Status line + a live seconds counter while a processing stage runs, so you
+// always see how long the current step has taken.
+let statusBase='', stageStartedAt=0, stageTicker=null;
+const TIMED_STAGES_=['upload','transcribe','ai','save'];
+function paintStatus_(){
+  const st=document.body.dataset.stage||'';
+  let t=statusBase;
+  if(t && stageStartedAt && TIMED_STAGES_.indexOf(st)>=0){
+    t+='  ·  '+Math.floor((Date.now()-stageStartedAt)/1000)+' ث';
+  }
+  $('status').textContent=t;
+}
+function status(t){ statusBase=t||''; paintStatus_(); }
 function setStage_(stage){
+  if((document.body.dataset.stage||'')!==(stage||'')) stageStartedAt=Date.now();
   document.body.dataset.stage=stage||'';
+  clearInterval(stageTicker); stageTicker=null;
+  if(TIMED_STAGES_.indexOf(stage)>=0) stageTicker=setInterval(paintStatus_,1000);
+  paintStatus_();
   const idx=STAGE_ORDER_.indexOf(stage);
   document.querySelectorAll('#stage [data-stage]').forEach(function(el){
     const i=STAGE_ORDER_.indexOf(el.dataset.stage);
@@ -807,6 +823,7 @@ async function uploadAuthoritativeTurn_(blob){
     fr.readAsDataURL(blob);
   });
 
+  status('برفع التسجيل ('+(blob.size/1048576).toFixed(2)+' ميجا)...');
   await fetch(API+'?api=voiceAudio',{
     method:'POST',mode:'no-cors',
     headers:{'Content-Type':'text/plain;charset=UTF-8'},
@@ -849,7 +866,7 @@ async function uploadAuthoritativeTurn_(blob){
     if(t){ try{localStorage.removeItem('MGVOICE_PENDING_AUDIO');}catch(e){} return t; }
   }
 
-  let pollFails=0;
+  let pollFails=0, requeues=0;
   for(let i=0;i<180;i++){
     let st=null;
     try{ st=await jsonpRequest({api:'voiceAudioStatus',session:logicalSession,turnId:turnId},15000); pollFails=0; }
@@ -869,8 +886,23 @@ async function uploadAuthoritativeTurn_(blob){
     if(st && st.turnId===turnId && st.state==='error' && st.retryable===false){
       throw new Error(st.message||'التفريغ فشل.');
     }
+    // A failed attempt: ask the server to retry right away instead of waiting a minute.
+    if(st && st.turnId===turnId && st.state==='queued' && st.message && requeues<2){
+      requeues++;
+      status('محاولة التفريغ ماكملتش، بعيد تاني الآن ('+requeues+'/2)...');
+      try{
+        const again=await jsonpRequest({api:'voiceAudioQueue',session:logicalSession,turnId:turnId},150000);
+        if(again && again.state==='ready'){
+          const t=again.transcript ? String(again.transcript) : await fetchReadyTranscript_(turnId);
+          if(t){ try{localStorage.removeItem('MGVOICE_PENDING_AUDIO');}catch(e){} return t; }
+        }
+        if(again && again.state==='error' && again.retryable===false) throw new Error(again.message||'التفريغ فشل.');
+      }catch(e){ if(e.authError) throw e; if(/فشل/.test(String(e.message||''))) throw e; }
+      continue;
+    }
     if(st && st.state==='transcribing') status('Gemini بيحوّل التسجيل لنص...');
-    else if(st && st.state==='queued') status('التسجيل في الطابور... السيرفر هيبدأ فيه خلال ثواني.');
+    else if(st && st.state==='queued' && st.message) status('محاولة التفريغ ماكملتش، بعيد تاني... ('+String(st.message).slice(0,80)+')');
+    else if(st && st.state==='queued') status('بجهّز التسجيل للتفريغ...');
     else if(st && st.state==='ready') status('التفريغ خلص، بجيب النص...');
     else status('مستني السيرفر يبدأ التفريغ...');
     await new Promise(r=>setTimeout(r,i<15?1000:2000));
