@@ -814,13 +814,18 @@ async function uploadAuthoritativeTurn_(blob){
   setStage_('transcribe');
   $('modeTitle').textContent='بفرّغ التسجيل';
   $('modeText').textContent='التسجيل الأصلي اتخزن. Gemini بيحوّله لنص في الخلفية.';
-  status('بحط التسجيل في طابور التفريغ...');
+  status('Gemini بيحوّل التسجيل لنص...');
 
+  // The server now transcribes inside this request (fast path), so allow it time.
   let queued=null;
-  try{ queued=await jsonpRequest({api:'voiceAudioQueue',session:logicalSession,turnId:turnId},45000); }
+  try{ queued=await jsonpRequest({api:'voiceAudioQueue',session:logicalSession,turnId:turnId},150000); }
   catch(e){ if(e.authError) throw e; }
   if(queued && queued.state==='error' && queued.retryable===false){
-    throw new Error(queued.message||'مقدرتش أحط التسجيل في الطابور.');
+    throw new Error(queued.message||'التفريغ فشل.');
+  }
+  if(queued && queued.turnId===turnId && queued.state==='ready'){
+    const t=queued.transcript ? String(queued.transcript) : await fetchReadyTranscript_(turnId);
+    if(t){ try{localStorage.removeItem('MGVOICE_PENDING_AUDIO');}catch(e){} return t; }
   }
 
   let pollFails=0;
