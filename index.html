@@ -90,6 +90,11 @@ body[data-stage="upload"] .dot,body[data-stage="transcribe"] .dot,body[data-stag
 }
 .question small{display:block;color:#9DBEFA;font-size:12px;margin-bottom:6px}
 .question strong{display:block;font-size:19px;font-weight:600;line-height:1.6}
+.question .typed{display:flex;gap:8px;margin-top:12px}
+.question .typed input{flex:1;min-width:0;background:var(--ink);color:#fff;border:1px solid #2A3A5C;border-radius:12px;padding:12px;font:inherit;font-size:17px;direction:rtl}
+.question .typed input:focus{outline:none;border-color:var(--blue)}
+.question .typed button{background:var(--green);color:#06210F;border:0;border-radius:12px;padding:0 18px;font:inherit;font-weight:700;font-size:16px}
+.question .typedHint{margin-top:8px;margin-bottom:0;color:#7F93B8}
 
 /* ---- transcript ---- */
 .transcript{
@@ -197,7 +202,13 @@ body[data-stage="recording"] .mic::before{
     </div>
   </section>
 
-  <div id="question" class="question hidden"><small>الـ CRM بيسأل</small><strong id="questionText"></strong></div>
+  <div id="question" class="question hidden"><small>الـ CRM بيسأل</small><strong id="questionText"></strong>
+    <div class="typed">
+      <input id="answerInput" type="text" autocomplete="off" placeholder="أو اكتب الإجابة هنا">
+      <button id="answerSend" type="button" onclick="sendTypedAnswer_()">إرسال</button>
+    </div>
+    <small class="typedHint">تقدر ترد بالمايك أو تكتب. لو فاتك السؤال دوس على المايك وجاوب.</small>
+  </div>
 
   <div id="transcript" class="transcript" aria-live="polite"></div>
 
@@ -370,7 +381,9 @@ async function startAuth_(){
     if(r&&r.authorized){ authState.email=r.email||authState.email; saveAuth_(); hideAuth_(); recoverDurableVoiceSession_(); }
     else showAuth_();
   }catch(e){
-    if(!e.authError){ hideAuth_(); showError('مقدرتش أتأكد من تسجيل الدخول دلوقتي. حدّث الصفحة.'); }
+    // The saved login is still valid locally, and the server re-checks it on every
+    // request anyway, so a slow reply here is not a reason to show an error.
+    if(!e.authError){ hideAuth_(); recoverDurableVoiceSession_(); }
   }
 }
 
@@ -719,7 +732,7 @@ function startListening_(newTurn){
   clearTurnTimers_();
 
   if(!voiceEnabled){ startSession(); return; }
-  if(processing) return;
+  if(processing || window.__mgRequestBusy) return;
 
   if(newTurn){
     turnFinal='';
@@ -783,7 +796,13 @@ async function ensureMediaRecorder_(){
   const chosen=preferred.find(t=>window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
   audioMimeType=chosen||'audio/webm';
   audioParts=[];
-  const rec=new MediaRecorder(mediaStream, chosen?{mimeType:chosen}:undefined);
+  // Voice-quality bitrate: ~4x smaller files than the iPhone default, so upload
+  // and transcription are faster. Speech stays perfectly clear at 32 kbps.
+  const recOpts={audioBitsPerSecond:32000};
+  if(chosen) recOpts.mimeType=chosen;
+  let rec;
+  try{ rec=new MediaRecorder(mediaStream,recOpts); }
+  catch(e){ rec=new MediaRecorder(mediaStream, chosen?{mimeType:chosen}:undefined); }
   mediaRecorder=rec;
   // Only the current recorder may add audio, so a late chunk from an old recording
   // can never leak into the next call.
@@ -920,6 +939,18 @@ function startSession(){
   if(!C){ showError('التعرف على الكلام مش متاح في المتصفح ده. استخدم Chrome أو Edge.'); return; }
 
   if(window.__mgStartBusy) return;
+
+  // A question is waiting: the mic answers it inside the same call
+  // (it used to throw the whole call away and start a new one).
+  if(currentMode==='answer' && questionText && logicalSession && !processing && !window.__mgRequestBusy){
+    if(isListening) return;
+    voiceEnabled=true;
+    recognitionStartAttempts=0;
+    clearRecognitionWatchdogs_();
+    startListening_(true);
+    return;
+  }
+
   window.__mgStartBusy=true;
 
   voiceEnabled=true;
@@ -989,7 +1020,7 @@ async function finishTurn_(reason){
   try{ audioBlob=await stopMediaRecorder_(); }catch(e){ audioBlob=null; }
   audioParts=[];
 
-  if(!t && (!audioBlob || audioBlob.size<15000)){
+  if(!t && (!audioBlob || audioBlob.size<8000)){
     processing=false;
     turnFinal=''; turnInterim=''; lastSpeechAt=0; resetLiveCorrection_();
     $('startBtn').disabled=false;
@@ -1428,6 +1459,42 @@ function handleResult(data){
   $('stopBtn').disabled=true;
 }
 
+function sendTypedAnswer_(){
+  if(currentMode!=='answer' || !questionText || processing || window.__mgRequestBusy) return;
+  const raw=String($('answerInput').value||'').trim();
+  if(!raw){ $('answerInput').focus(); return; }
+  clearError();
+
+  let line;
+  if(phoneMode){
+    const digits=normalizeSpokenDigits_(raw).replace(/\D/g,'');
+    if(!validEgyptianMobileDigits_(digits)){
+      showError('الرقم مش صح. اكتبه 11 رقم ويبدأ بـ 01، مثلًا 01012345678.');
+      $('answerInput').focus();
+      return;
+    }
+    line='ANSWER: PHONE '+digits;
+  }else{
+    line='ANSWER: '+raw;
+  }
+
+  // Stop any listening/speaking so nothing else answers at the same time.
+  shouldKeepListening=false; isListening=false; speechActive=false;
+  clearTurnTimers_(); clearRecognitionWatchdogs_();
+  try{ if(recognition) recognition.abort(); }catch(e){}
+  try{ if('speechSynthesis' in window) speechSynthesis.cancel(); }catch(e){}
+  try{ if(mediaRecorder && mediaRecorder.state!=='inactive') mediaRecorder.stop(); }catch(e){}
+  mediaRecorder=null; audioParts=[]; releaseMediaStream_();
+  turnFinal=''; turnInterim=''; lastSpeechAt=0; resetLiveCorrection_();
+
+  try{ $('answerInput').blur(); }catch(e){}
+  $('answerInput').value='';
+  phoneMode=false;
+  conversation.push(line);
+  render();
+  processConversation();
+}
+
 function speakQuestionIntroThen_(questionToSpeak){
   if(!newLeadIntroPending||questionIntroPlayed){ speak(questionToSpeak,true); return; }
   newLeadIntroPending=false;
@@ -1447,8 +1514,15 @@ function ask(text){
     ? 'قول رقم الموبايل رقم رقم. خد وقتك، وأنا مستنيك تخلص.'
     : questionText;
   $('question').classList.remove('hidden');
+  const inp=$('answerInput');
+  inp.value='';
+  inp.setAttribute('inputmode',phoneMode?'tel':'text');
+  inp.setAttribute('dir',phoneMode?'ltr':'rtl');
+  inp.placeholder=phoneMode?'أو اكتب الرقم هنا: 01xxxxxxxxx':'أو اكتب الإجابة هنا';
 
   currentMode='answer';
+  // If the phone blocks the automatic mic start, you can still tap the mic to answer.
+  $('startBtn').disabled=false;
   setStage_('');
   $('modeTitle').textContent='سؤال من الـ CRM';
   $('modeText').textContent=phoneMode
