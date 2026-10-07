@@ -94,6 +94,7 @@ body[data-stage="upload"] .dot,body[data-stage="transcribe"] .dot,body[data-stag
 .question .typed input{flex:1;min-width:0;background:var(--ink);color:#fff;border:1px solid #2A3A5C;border-radius:12px;padding:12px;font:inherit;font-size:17px;direction:rtl}
 .question .typed input:focus{outline:none;border-color:var(--blue)}
 .question .typed button{background:var(--green);color:#06210F;border:0;border-radius:12px;padding:0 18px;font:inherit;font-weight:700;font-size:16px}
+.question .typedErr{margin-top:8px;margin-bottom:0;color:#FCA5A5;font-size:14px}
 .question .typedHint{margin-top:8px;margin-bottom:0;color:#7F93B8}
 
 /* ---- transcript ---- */
@@ -207,6 +208,7 @@ body[data-stage="recording"] .mic::before{
       <input id="answerInput" type="text" autocomplete="off" placeholder="أو اكتب الإجابة هنا">
       <button id="answerSend" type="button" onclick="sendTypedAnswer_()">إرسال</button>
     </div>
+    <small id="answerErr" class="typedErr hidden"></small>
     <small class="typedHint">تقدر ترد بالمايك أو تكتب. لو فاتك السؤال دوس على المايك وجاوب.</small>
   </div>
 
@@ -236,9 +238,9 @@ const CHUNK_SIZE=900;
 const CHUNK_CONCURRENCY=6;
 
 // Live correction (Gemini via voiceCorrect). Interval keeps us inside the free-tier rate limit.
-const LIVE_FIX_INTERVAL_MS=6000;
-const LIVE_FIX_MIN_CHARS=12;
-const LIVE_FIX_MAX_CHARS=1500;
+const LIVE_FIX_INTERVAL_MS=3000;
+const LIVE_FIX_MIN_CHARS=8;   // new characters needed before correcting again
+const LIVE_FIX_MAX_CHARS=1700;
 
 // ===== Google sign-in =====
 const GOOGLE_CLIENT_ID='64640825895-bb50nlrcn1uckibmvi2h55ce2648gb1v.apps.googleusercontent.com';
@@ -290,8 +292,10 @@ let phoneAttempts=0;
 // Live correction state
 let liveCorrectionTimer=null;
 let liveCorrectionSeq=0;
-let liveFixedText='';      // Gemini-corrected text for turnFinal[0 .. liveFixedUpTo)
-let liveFixedUpTo=0;
+let liveFixedText='';      // Gemini-corrected version of liveSnapRaw
+let liveFixedUpTo=0;       // kept for compatibility
+let liveSnapRaw='';        // the raw text that liveFixedText corrects
+let liveFrozenRaw='', liveFrozenFixed='';  // long stories: already-corrected beginning
 let liveFixInFlight=false;
 let liveFixLastSentAt=0;
 
@@ -417,9 +421,19 @@ function maskConversationForDisplay_(line){
 // ===== Rendering =====
 function el_(tag,cls,text){ const e=document.createElement(tag); if(cls) e.className=cls; if(text!=null) e.textContent=text; return e; }
 
+// Corrected text for everything Gemini has already seen, then the newest words
+// (still raw, grey) until the next correction catches up a few seconds later.
 function liveParts_(){
-  const pendingRaw=(turnFinal.slice(liveFixedUpTo)+' '+turnInterim).replace(/\s+/g,' ').trim();
-  return {fixed:liveFixedText.trim(),raw:localCorrectLive_(pendingRaw)};
+  const raw=currentVoiceText_();
+  if(liveSnapRaw && liveFixedText){
+    let i=0; const n=Math.min(raw.length,liveSnapRaw.length);
+    while(i<n && raw.charCodeAt(i)===liveSnapRaw.charCodeAt(i)) i++;
+    // The phone sometimes rewrites its last words; accept small rewrites.
+    if(i>=liveSnapRaw.length*0.6){
+      return {fixed:liveFixedText.trim(),raw:localCorrectLive_(raw.slice(liveSnapRaw.length).trim())};
+    }
+  }
+  return {fixed:'',raw:localCorrectLive_(raw)};
 }
 
 function render(){
@@ -679,7 +693,7 @@ function createRecognition_(){
     render();
     scheduleRealSilence_();
 
-    if(newestFinal && currentMode==='call' && !phoneMode){
+    if(currentMode==='call' && !phoneMode){
       queueLiveCorrection_();
     }
   };
@@ -723,6 +737,8 @@ function resetLiveCorrection_(){
   liveCorrectionSeq++;
   liveFixedText='';
   liveFixedUpTo=0;
+  liveSnapRaw='';
+  liveFrozenRaw=''; liveFrozenFixed='';
   liveFixInFlight=false;
   liveFixLastSentAt=0;
 }
@@ -1353,37 +1369,41 @@ async function runLiveCorrection_(){
   if(currentMode!=='call' || phoneMode || processing || !shouldKeepListening) return;
   if(liveFixInFlight) return;
 
-  const pending=turnFinal.slice(liveFixedUpTo);
-  if(pending.trim().length<LIVE_FIX_MIN_CHARS) return;
+  const raw=currentVoiceText_();
+  if(raw.length<LIVE_FIX_MIN_CHARS) return;
+  if(raw.startsWith(liveSnapRaw) && raw.length-liveSnapRaw.length<LIVE_FIX_MIN_CHARS) return;
 
-  let piece=pending;
-  if(piece.length>LIVE_FIX_MAX_CHARS){
-    const cut=piece.lastIndexOf(' ',LIVE_FIX_MAX_CHARS);
-    piece=piece.slice(0,cut>200?cut:LIVE_FIX_MAX_CHARS);
+  // Correct the whole running text, so earlier words get fixed with more context.
+  // For a very long story, the part already corrected is frozen and only the rest is sent.
+  if(raw.length-liveFrozenRaw.length>LIVE_FIX_MAX_CHARS && liveSnapRaw.length>liveFrozenRaw.length && raw.startsWith(liveSnapRaw)){
+    liveFrozenRaw=liveSnapRaw; liveFrozenFixed=liveFixedText;
   }
-  const endIndex=liveFixedUpTo+piece.length;
-  const seq=liveCorrectionSeq;
+  if(!raw.startsWith(liveFrozenRaw)){ liveFrozenRaw=''; liveFrozenFixed=''; }
+  let body=raw.slice(liveFrozenRaw.length).trim();
+  if(body.length>LIVE_FIX_MAX_CHARS) body=body.slice(-LIVE_FIX_MAX_CHARS);
+  if(!body) return;
 
+  const seq=liveCorrectionSeq;
   liveFixInFlight=true;
   liveFixLastSentAt=Date.now();
   render();
 
   let corrected='';
   try{
-    const data=await jsonpRequest({api:'voiceCorrect',text:localCorrectLive_(piece.trim())},20000);
+    const data=await jsonpRequest({api:'voiceCorrect',text:localCorrectLive_(body)},20000);
     if(data && data.success && data.corrected) corrected=String(data.corrected).trim();
-  }catch(e){ /* live correction is best-effort; raw text stays on screen */ }
+  }catch(e){ /* best-effort; raw text stays on screen */ }
 
   liveFixInFlight=false;
   if(seq!==liveCorrectionSeq) return; // the turn ended or restarted meanwhile
 
   if(corrected){
-    liveFixedText=(liveFixedText+' '+corrected).replace(/[ \t]+/g,' ').trim();
-    liveFixedUpTo=endIndex;
+    liveFixedText=(liveFrozenFixed+' '+corrected).replace(/[ \t]+/g,' ').trim();
+    liveSnapRaw=raw;
   }
   render();
 
-  if(turnFinal.slice(liveFixedUpTo).trim().length>=LIVE_FIX_MIN_CHARS) queueLiveCorrection_();
+  if(currentVoiceText_().length-liveSnapRaw.length>=LIVE_FIX_MIN_CHARS) queueLiveCorrection_();
 }
 
 function arabicQuestion(data){
@@ -1459,17 +1479,23 @@ function handleResult(data){
   $('stopBtn').disabled=true;
 }
 
+// Errors show right under the box (the keyboard hides the page's main error area).
+function typedErr_(t){ const e=$('answerErr'); e.textContent=t||''; e.classList.toggle('hidden',!t); }
+
 function sendTypedAnswer_(){
-  if(currentMode!=='answer' || !questionText || processing || window.__mgRequestBusy) return;
+  typedErr_('');
+  if(processing || window.__mgRequestBusy){ typedErr_('استنى ثانية، بخلّص الخطوة اللي قبلها...'); return; }
+  if(currentMode!=='answer' || !questionText){ typedErr_('مفيش سؤال مستني إجابة دلوقتي.'); return; }
   const raw=String($('answerInput').value||'').trim();
-  if(!raw){ $('answerInput').focus(); return; }
+  if(!raw){ typedErr_(phoneMode?'اكتب الرقم الأول.':'اكتب الإجابة الأول.'); $('answerInput').focus(); return; }
   clearError();
 
   let line;
   if(phoneMode){
     const digits=normalizeSpokenDigits_(raw).replace(/\D/g,'');
     if(!validEgyptianMobileDigits_(digits)){
-      showError('الرقم مش صح. اكتبه 11 رقم ويبدأ بـ 01، مثلًا 01012345678.');
+      const n=digits.length;
+      typedErr_('الرقم لازم يكون 11 رقم ويبدأ بـ 01. إنت كاتب '+n+' رقم'+(n===10?' (ناقص رقم)':'')+'.');
       $('answerInput').focus();
       return;
     }
@@ -1487,6 +1513,7 @@ function sendTypedAnswer_(){
   mediaRecorder=null; audioParts=[]; releaseMediaStream_();
   turnFinal=''; turnInterim=''; lastSpeechAt=0; resetLiveCorrection_();
 
+  typedErr_('');
   try{ $('answerInput').blur(); }catch(e){}
   $('answerInput').value='';
   phoneMode=false;
@@ -1516,6 +1543,7 @@ function ask(text){
   $('question').classList.remove('hidden');
   const inp=$('answerInput');
   inp.value='';
+  typedErr_('');
   inp.setAttribute('inputmode',phoneMode?'tel':'text');
   inp.setAttribute('dir',phoneMode?'ltr':'rtl');
   inp.placeholder=phoneMode?'أو اكتب الرقم هنا: 01xxxxxxxxx':'أو اكتب الإجابة هنا';
@@ -1611,6 +1639,10 @@ $('signOutBtn').onclick=function(){
   showAuth_('تم تسجيل الخروج. سجّل دخولك تاني لما تحتاج.');
 };
 render();
+try{
+  $('answerInput').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); sendTypedAnswer_(); } });
+  $('answerInput').addEventListener('input',function(){ typedErr_(''); });
+}catch(e){}
 startAuth_();
 </script>
 </body>
