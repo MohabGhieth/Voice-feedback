@@ -224,6 +224,7 @@ body[data-stage="recording"] .mic::before{
     </button>
     <button id="stopBtn" class="side stop" type="button" disabled>■ إنهاء وحفظ</button>
   </div>
+  <div id="usageLine" class="tip" style="margin-bottom:6px"></div>
   <div class="tip">النص بيتصحّح بـ Gemini وإنت بتتكلم. النسخة النهائية بتتعمل من التسجيل الأصلي، وهي اللي بتتحفظ في الـ CRM.</div>
 </main>
 
@@ -259,6 +260,8 @@ let processing=false;
 let currentMode='call';
 let questionText='';
 let conversation=[];
+let typingActive=false, currentTtsAudio=null;
+let saveRetries=0, saveRetryTimer=null, pendingSave=false;
 let logicalSession='';
 let mediaStream=null;
 let noTextHintTimer=null;
@@ -348,7 +351,18 @@ function showAuth_(msg){
   if(msg) $('authMsg').textContent=msg;
   initGoogle_();
 }
-function hideAuth_(){ $('authOverlay').classList.add('hidden'); showAuthError_(''); renderUser_(); }
+function hideAuth_(){ $('authOverlay').classList.add('hidden'); showAuthError_(''); renderUser_(); refreshUsage_(); }
+// V36.30: today's Gemini requests (our own count; Google's daily quota resets at midnight Pacific).
+async function refreshUsage_(){
+  try{
+    if(!isAuthValid_()) return;
+    const u=await jsonpRequest({api:'voiceUsage'},8000);
+    if(!u||!u.success) return;
+    $('usageLine').textContent='طلبات Gemini النهارده: '+u.total+
+      (u.live?' (منهم '+u.live+' تصحيح مباشر)':'')+
+      ' · العداد بيتصفّر الساعة '+u.resetsAt+' بتوقيت مصر';
+  }catch(e){}
+}
 function authLost_(msg){
   clearAuth_(); renderUser_();
   processing=false; window.__mgRequestBusy=false;
@@ -537,10 +551,13 @@ async function speak(text,listenAfter){
     clearTimeout(fallbackTimer);
 
     if(winner&&winner.data&&winner.data.success&&winner.data.audioBase64){
+      if(typingActive && listenAfter){ vadSuppressed=false; return; } // user already typing
       const audio=new Audio('data:'+(winner.data.mimeType||'audio/wav')+';base64,'+winner.data.audioBase64);
+      currentTtsAudio=audio;
       status('المساعد بيتكلم...');
       audio.onended=()=>{
         vadSuppressed=false;
+        if(currentTtsAudio===audio) currentTtsAudio=null;
         if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),300);
       };
       audio.onerror=()=>fallbackSpeech_(text,listenAfter);
@@ -554,6 +571,7 @@ async function speak(text,listenAfter){
 }
 
 function fallbackSpeech_(text,listenAfter){
+  if(typingActive && listenAfter){ vadSuppressed=false; return; }
   if(!('speechSynthesis' in window)){
     vadSuppressed=false;
     if(listenAfter&&voiceEnabled) setTimeout(()=>startListening_(true),150);
@@ -767,6 +785,8 @@ function startListening_(newTurn){
 
   if(!voiceEnabled){ startSession(); return; }
   if(processing || window.__mgRequestBusy) return;
+  // The user chose to type the answer: don't open the mic behind their back.
+  if(typingActive && currentMode==='answer') return;
 
   if(newTurn){
     turnFinal='';
@@ -1031,6 +1051,11 @@ function startSession(){
   logicalSession=makeSession_();
   try{localStorage.setItem('MGVOICE_SESSION',logicalSession);}catch(e){}
   audioTurnCounter=0;
+  // V36.30: a NEW call starts empty. The previous saved call used to stay in the
+  // list and was sent again with call #2, which broke the analysis.
+  conversation=[]; phoneMode=false; typingActive=false;
+  try{ $('question').classList.add('hidden'); }catch(e){}
+  render();
   currentMode='call';
   questionText='';
   questionIntroPlayed=false;
@@ -1183,7 +1208,6 @@ async function finishTurn_(reason){
   processConversation();
 }
 
-let saveRetries=0, saveRetryTimer=null, pendingSave=false;
 function stopNow(){
   // After Gemini was overloaded, this button retries saving the same call.
   if(pendingSave && !isListening && !processing){
@@ -1315,7 +1339,9 @@ async function processConversation(){
 
   setStage_('ai');
   $('modeTitle').textContent='بحلل المكالمة';
-  $('modeText').textContent='التفريغ خلص. Gemini بيطلّع بيانات الليد والمتابعة.';
+  $('modeText').textContent=/^ANSWER:/.test(conversation[conversation.length-1]||'')
+    ? 'Gemini بيراجع إجابتك مع المكالمة كلها. ده بياخد 10–20 ثانية.'
+    : 'التفريغ خلص. Gemini بيطلّع بيانات الليد والمتابعة.';
   status('براجع المكالمة وبيانات الليد...');
 
   const session=logicalSession;
@@ -1568,6 +1594,7 @@ function handleResult(data){
     render();
     saveRetries=0; pendingSave=false;
     setStage_('saved');
+    setTimeout(refreshUsage_,1500);
     try{localStorage.removeItem('MGVOICE_SESSION');localStorage.removeItem('MGVOICE_PENDING_AUDIO');}catch(e){}
     status('');
     speak(data.message||'تم حفظ المكالمة بنجاح.',false);
@@ -1590,16 +1617,16 @@ function handleResult(data){
   // Gemini overloaded: the call is NOT lost. Retry automatically, then let the
   // user retry with "إنهاء وحفظ" (it used to end in an error and the call was gone).
   if(/temporarily unavailable|high demand|\b503\b|\b429\b|overloaded/i.test(String(data.message||''))){
-    if(saveRetries<2){
+    if(saveRetries<1){
       saveRetries++;
       setStage_('ai');
       $('modeTitle').textContent='Gemini زحمة';
-      let left=20;
-      status('Gemini زحمة دلوقتي. هحاول تاني خلال '+left+' ثانية ('+saveRetries+'/2)... المكالمة محفوظة عندك.');
+      let left=15;
+      status('Gemini زحمة دلوقتي. هحاول تاني خلال '+left+' ثانية... المكالمة محفوظة عندك.');
       clearInterval(saveRetryTimer);
       saveRetryTimer=setInterval(()=>{
         left--;
-        if(left>0){ status('Gemini زحمة دلوقتي. هحاول تاني خلال '+left+' ثانية ('+saveRetries+'/2)... المكالمة محفوظة عندك.'); return; }
+        if(left>0){ status('Gemini زحمة دلوقتي. هحاول تاني خلال '+left+' ثانية... المكالمة محفوظة عندك.'); return; }
         clearInterval(saveRetryTimer); saveRetryTimer=null;
         processConversation();
       },1000);
@@ -1625,6 +1652,32 @@ function handleResult(data){
 
 // Errors show right under the box (the keyboard hides the page's main error area).
 function typedErr_(t){ const e=$('answerErr'); e.textContent=t||''; e.classList.toggle('hidden',!t); }
+
+function stopTts_(){
+  try{ if(currentTtsAudio){ currentTtsAudio.onended=null; currentTtsAudio.pause(); } }catch(e){}
+  currentTtsAudio=null;
+  try{ if('speechSynthesis' in window) speechSynthesis.cancel(); }catch(e){}
+  vadSuppressed=false;
+}
+// V36.30: the moment the user taps the answer box, the mic and the spoken
+// question stop. Before, the mic kept recording in the background while typing;
+// the silence timer then uploaded that empty recording ("بيرفع وبيحلل"), and in
+// phone mode it came back as "الرقم مش واضح" and asked for the number again.
+function pauseVoiceForTyping_(){
+  if(currentMode!=='answer') return;
+  typingActive=true;
+  stopTts_();
+  if(processing) return; // a voice answer is already being processed; send will replace it
+  shouldKeepListening=false; isListening=false; speechActive=false;
+  clearTurnTimers_(); clearRecognitionWatchdogs_();
+  try{ if(recognition) recognition.abort(); }catch(e){}
+  try{ if(mediaRecorder){ mediaRecorder.ondataavailable=null; if(mediaRecorder.state!=='inactive') mediaRecorder.stop(); } }catch(e){}
+  mediaRecorder=null; audioParts=[]; releaseMediaStream_();
+  turnFinal=''; turnInterim=''; lastSpeechAt=0; resetLiveCorrection_();
+  $('stopBtn').disabled=true;
+  $('startBtn').disabled=false;
+  status('اكتب الإجابة ودوس إرسال. لو عايز ترد بصوتك دوس على المايك.');
+}
 
 function sendTypedAnswer_(){
   typedErr_('');
@@ -1655,10 +1708,11 @@ function sendTypedAnswer_(){
   shouldKeepListening=false; isListening=false; speechActive=false;
   clearTurnTimers_(); clearRecognitionWatchdogs_();
   try{ if(recognition) recognition.abort(); }catch(e){}
-  try{ if('speechSynthesis' in window) speechSynthesis.cancel(); }catch(e){}
-  try{ if(mediaRecorder && mediaRecorder.state!=='inactive') mediaRecorder.stop(); }catch(e){}
+  stopTts_();
+  try{ if(mediaRecorder){ mediaRecorder.ondataavailable=null; if(mediaRecorder.state!=='inactive') mediaRecorder.stop(); } }catch(e){}
   mediaRecorder=null; audioParts=[]; releaseMediaStream_();
   turnFinal=''; turnInterim=''; lastSpeechAt=0; resetLiveCorrection_();
+  typingActive=false;
 
   typedErr_('');
   try{ $('answerInput').blur(); }catch(e){}
@@ -1677,6 +1731,7 @@ function speakQuestionIntroThen_(questionToSpeak){
 }
 
 function ask(text){
+  typingActive=false;
   questionText=text||'محتاج معلومة ناقصة.';
   phoneMode=isPhoneQuestion_(questionText);
   phoneAttempts=0;
@@ -1728,6 +1783,7 @@ async function recoverDurableVoiceSession_(){
 
 function reset(){
   clearInterval(saveRetryTimer); saveRetryTimer=null; saveRetries=0; pendingSave=false;
+  typingActive=false; stopTts_();
   shouldKeepListening=false;
   processing=false;
   window.__mgRequestBusy=false;
@@ -1777,7 +1833,7 @@ function reset(){
   clearError();
 }
 
-$('startBtn').onclick=startSession;
+$('startBtn').onclick=function(){ typingActive=false; try{ $('answerInput').blur(); }catch(e){} startSession(); };
 $('stopBtn').onclick=stopNow;
 $('resetBtn').onclick=reset;
 $('signOutBtn').onclick=function(){
@@ -1789,7 +1845,8 @@ $('signOutBtn').onclick=function(){
 render();
 try{
   $('answerInput').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); sendTypedAnswer_(); } });
-  $('answerInput').addEventListener('input',function(){ typedErr_(''); });
+  $('answerInput').addEventListener('input',function(){ typedErr_(''); pauseVoiceForTyping_(); });
+  $('answerInput').addEventListener('focus',pauseVoiceForTyping_);
 }catch(e){}
 startAuth_();
 </script>
