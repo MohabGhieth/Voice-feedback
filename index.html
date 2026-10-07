@@ -1218,15 +1218,27 @@ async function finishTurn_(reason){
 
   if(currentMode==='answer' && phoneMode){
     const digits=normalizeSpokenDigits_(authoritativeText);
+    const only=String(digits||'').replace(/\D/g,'');
+
+    if(allowsLast4_(questionText) && only.length===4){
+      conversation.push('ANSWER: LAST4 '+only);
+      phoneMode=false;
+      render();
+      processConversation();
+      return;
+    }
 
     if(!validEgyptianMobileDigits_(digits)){
       processing=false;
       phoneAttempts++;
       lastAudibleAt=Date.now();
       phoneMode=true;
-      $('questionText').textContent='الرقم مش واضح أو ناقص. قول رقم الموبايل رقم رقم. خد وقتك، وأنا مستنيك تخلص.';
+      const again=allowsLast4_(questionText)
+        ?'الرقم مش واضح. قول آخر أربع أرقام، أو رقم الموبايل كامل رقم رقم.'
+        :'الرقم مش واضح أو ناقص. قول رقم الموبايل رقم رقم. خد وقتك، وأنا مستنيك تخلص.';
+      if(!allowsLast4_(questionText)) $('questionText').textContent=again;
       render();
-      speak('الرقم مش واضح أو ناقص. قول رقم الموبايل رقم رقم. خد وقتك، وأنا مستنيك تخلص.',true);
+      speak(again,true);
       return;
     }
 
@@ -1435,8 +1447,12 @@ async function processConversation(){
 
 function isPhoneQuestion_(text){
   const s=String(text||'').toLowerCase();
-  return /phone|mobile|رقم الموبايل|رقم التليفون|رقم الهاتف|الموبايل|التليفون/.test(s);
+  // V36.31: "قولّي اسم العميل أو آخر أربع أرقام" also accepts a name -> not digits-only.
+  if(/اسم العميل|المشروع/.test(s)) return false;
+  return /phone|mobile|رقم الموبايل|رقم التليفون|رقم الهاتف|الموبايل|التليفون|آخر أربع|اخر اربع/.test(s);
 }
+// V36.31: questions that accept the LAST 4 digits (old lead) as well as a full number.
+function allowsLast4_(text){ return /(?:آخر|اخر)\s*(?:أربع|اربع|4)/.test(String(text||'')); }
 
 function normalizeSpokenDigits_(text){
   let s=String(text||'').toLowerCase().trim();
@@ -1613,7 +1629,7 @@ function arabicQuestion(data){
   if(data.question) return data.question;
   if(data.type==='PHONE_REQUIRED') return 'تمام، قولّي رقم الموبايل رقم رقم، وخد وقتك وأنا مستنيك تخلص.';
   if(data.type==='PHONE_CONFIRMATION_REQUIRED') return data.question||'أنا فهمت رقم الموبايل. الرقم ده صح؟';
-  if(data.type==='NEW_CLIENT_MISSING_DATA') return 'تمام، ناقصني شوية بيانات بسيطة. هسألك عليهم واحدة واحدة.';
+  if(data.type==='NEW_CLIENT_MISSING_DATA') return 'تمام، قولّي اسم العميل.';
   if(data.type==='SOURCE_REQUIRED') return 'تمام، الليد ده جالك منين؟ Element، Direct، Adel، FB، Cold Call، ولا Refell؟';
   if(data.type==='CLIENT_NOT_FOUND') return 'مش قادر أحدد الليد. قولّي اسم العميل أو آخر أربع أرقام من الموبايل.';
   if(data.type==='MULTIPLE_CLIENTS') return data.message||'لقيت أكتر من تطابق. قولّي اسم العميل أو آخر أربع أرقام من الموبايل.';
@@ -1740,13 +1756,18 @@ function sendTypedAnswer_(){
   let line;
   if(phoneMode){
     const digits=normalizeSpokenDigits_(raw).replace(/\D/g,'');
-    if(!validEgyptianMobileDigits_(digits)){
+    if(allowsLast4_(questionText) && digits.length===4){
+      line='ANSWER: LAST4 '+digits;
+    }else if(!validEgyptianMobileDigits_(digits)){
       const n=digits.length;
-      typedErr_('الرقم لازم يكون 11 رقم ويبدأ بـ 01. إنت كاتب '+n+' رقم'+(n===10?' (ناقص رقم)':'')+'.');
+      typedErr_(allowsLast4_(questionText)
+        ?'اكتب آخر 4 أرقام بس، أو الرقم كامل 11 رقم يبدأ بـ 01. إنت كاتب '+n+' رقم.'
+        :'الرقم لازم يكون 11 رقم ويبدأ بـ 01. إنت كاتب '+n+' رقم'+(n===10?' (ناقص رقم)':'')+'.');
       $('answerInput').focus();
       return;
+    }else{
+      line='ANSWER: PHONE '+digits;
     }
-    line='ANSWER: PHONE '+digits;
   }else{
     line='ANSWER: '+raw;
   }
@@ -1798,7 +1819,7 @@ function ask(text){
   typedErr_('');
   inp.setAttribute('inputmode',phoneMode?'tel':'text');
   inp.setAttribute('dir',phoneMode?'ltr':'rtl');
-  inp.placeholder=phoneMode?'أو اكتب الرقم هنا: 01xxxxxxxxx':'أو اكتب الإجابة هنا';
+  inp.placeholder=phoneMode?(allowsLast4_(questionText)?'أو اكتب آخر 4 أرقام أو الرقم كامل':'أو اكتب الرقم هنا: 01xxxxxxxxx'):'أو اكتب الإجابة هنا';
 
   currentMode='answer';
   // If the phone blocks the automatic mic start, you can still tap the mic to answer.
