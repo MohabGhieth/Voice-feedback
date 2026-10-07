@@ -1025,6 +1025,7 @@ function startSession(){
   }
 
   window.__mgStartBusy=true;
+  clearInterval(saveRetryTimer); saveRetryTimer=null; saveRetries=0; pendingSave=false;
 
   voiceEnabled=true;
   logicalSession=makeSession_();
@@ -1182,7 +1183,18 @@ async function finishTurn_(reason){
   processConversation();
 }
 
-function stopNow(){ finishTurn_('manual'); }
+let saveRetries=0, saveRetryTimer=null, pendingSave=false;
+function stopNow(){
+  // After Gemini was overloaded, this button retries saving the same call.
+  if(pendingSave && !isListening && !processing){
+    pendingSave=false;
+    clearError();
+    $('stopBtn').disabled=true;
+    processConversation();
+    return;
+  }
+  finishTurn_('manual');
+}
 
 function jsonpRequest(params,timeoutMs=15000){
   const isLogin=!!(params&&params.api==='voiceLogin');
@@ -1554,6 +1566,7 @@ function handleResult(data){
 
     conversation=data.feedback ? ['CORRECTED FEEDBACK: '+data.feedback] : [];
     render();
+    saveRetries=0; pendingSave=false;
     setStage_('saved');
     try{localStorage.removeItem('MGVOICE_SESSION');localStorage.removeItem('MGVOICE_PENDING_AUDIO');}catch(e){}
     status('');
@@ -1568,8 +1581,38 @@ function handleResult(data){
 
   const q=arabicQuestion(data);
   if(q){
+    saveRetries=0; pendingSave=false;
     status('');
     ask(q);
+    return;
+  }
+
+  // Gemini overloaded: the call is NOT lost. Retry automatically, then let the
+  // user retry with "إنهاء وحفظ" (it used to end in an error and the call was gone).
+  if(/temporarily unavailable|high demand|\b503\b|\b429\b|overloaded/i.test(String(data.message||''))){
+    if(saveRetries<2){
+      saveRetries++;
+      setStage_('ai');
+      $('modeTitle').textContent='Gemini زحمة';
+      let left=20;
+      status('Gemini زحمة دلوقتي. هحاول تاني خلال '+left+' ثانية ('+saveRetries+'/2)... المكالمة محفوظة عندك.');
+      clearInterval(saveRetryTimer);
+      saveRetryTimer=setInterval(()=>{
+        left--;
+        if(left>0){ status('Gemini زحمة دلوقتي. هحاول تاني خلال '+left+' ثانية ('+saveRetries+'/2)... المكالمة محفوظة عندك.'); return; }
+        clearInterval(saveRetryTimer); saveRetryTimer=null;
+        processConversation();
+      },1000);
+      return;
+    }
+    saveRetries=0;
+    pendingSave=true;
+    setStage_('');
+    $('modeTitle').textContent='Gemini زحمة';
+    showError('Gemini عليه ضغط من جوجل دلوقتي. المكالمة لسه موجودة، استنى دقيقة ودوس "إنهاء وحفظ" عشان تحاول تاني.');
+    status('');
+    $('startBtn').disabled=false;
+    $('stopBtn').disabled=false;
     return;
   }
 
@@ -1684,6 +1727,7 @@ async function recoverDurableVoiceSession_(){
 }
 
 function reset(){
+  clearInterval(saveRetryTimer); saveRetryTimer=null; saveRetries=0; pendingSave=false;
   shouldKeepListening=false;
   processing=false;
   window.__mgRequestBusy=false;
