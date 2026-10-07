@@ -1056,26 +1056,32 @@ async function sendConversationChunk_(session,index,total,text){
 }
 
 const sleep_=ms=>new Promise(r=>setTimeout(r,ms));
+// The Gemini analysis can take a while. The first request gets a long timeout;
+// if it still times out, later requests just collect the cached result (the server
+// keeps working and caches it), so a slow analysis never ends in an error.
 async function callProcess_(session){
+  const deadline=Date.now()+4*60*1000;
+  let first=true;
   let lastErr=null;
-  for(let attempt=0;attempt<3;attempt++){
+  while(Date.now()<deadline){
     try{
-      let result=await jsonpRequest({api:'voiceProcess',session:session},30000);
-      let tries=0;
-      while(result&&result.retry&&tries<6){
-        tries++;
-        status('الـ CRM لسه بيعالج المكالمة... استنى، ما تعيدش التسجيل.');
-        await sleep_(1500);
-        result=await jsonpRequest({api:'voiceProcess',session:session},30000);
+      const result=await jsonpRequest({api:'voiceProcess',session:session},first?120000:40000);
+      first=false;
+      if(result && result.retry){
+        status('الـ CRM لسه بيحلل المكالمة... استنى، ما تعيدش التسجيل.');
+        await sleep_(2500);
+        continue;
       }
       return result;
     }catch(e){
       if(e.authError) throw e;
+      first=false;
       lastErr=e;
-      await sleep_(1500);
+      status('التحليل بياخد وقت... لسه شغال، استنى.');
+      await sleep_(2500);
     }
   }
-  throw lastErr||new Error('الطلب للـ CRM فشل.');
+  throw lastErr||new Error('التحليل أخد وقت أطول من اللازم. المكالمة محفوظة على السيرفر؛ دوس إعادة وجرّب تاني.');
 }
 
 async function processConversation(){
@@ -1279,8 +1285,8 @@ async function runLiveCorrection_(){
     if(data && data.success && data.corrected) corrected=String(data.corrected).trim();
   }catch(e){ /* live correction is best-effort; raw text stays on screen */ }
 
-  if(seq!==liveCorrectionSeq) return; // the turn ended or restarted meanwhile
   liveFixInFlight=false;
+  if(seq!==liveCorrectionSeq) return; // the turn ended or restarted meanwhile
 
   if(corrected){
     liveFixedText=(liveFixedText+' '+corrected).replace(/[ \t]+/g,' ').trim();
