@@ -261,10 +261,11 @@ let currentMode='call';
 let questionText='';
 let conversation=[];
 let typingActive=false, currentTtsAudio=null;
+let micStartSeq=0;
 let saveRetries=0, saveRetryTimer=null, pendingSave=false;
 let logicalSession='';
 let mediaStream=null;
-let noTextHintTimer=null;
+let noTextHintTimer=null, noTextRestarts=0;
 let mediaRecorder=null;
 let audioParts=[];
 let audioMimeType='audio/webm';
@@ -693,8 +694,15 @@ function createRecognition_(){
     setStage_('recording');
     clearTimeout(noTextHintTimer);
     noTextHintTimer=setTimeout(()=>{
-      if(shouldKeepListening && !processing && !currentVoiceText_())
+      if(shouldKeepListening && !processing && !currentVoiceText_()){
         status('الكلام مش ظاهر على الشاشة، بس صوتك بيتسجّل عادي. لما تخلص دوس "إنهاء وحفظ".');
+        // V36.30: iPhone sometimes starts the live text deaf. Restart it once; the
+        // recording itself keeps running, nothing is lost.
+        if(noTextRestarts<1){
+          noTextRestarts++;
+          try{ if(recognition) recognition.abort(); }catch(e){}
+        }
+      }
     },8000);
     $('modeText').textContent=currentMode==='answer'
       ? 'تمام، سامعك. خد وقتك ورد عليا براحتك، ومش هقاطعك.'
@@ -748,6 +756,11 @@ function createRecognition_(){
       return;
     }
     if(err==='network'){ status('تقطيع بسيط في التعرف على الكلام... بكمّل الاستماع.'); return; }
+    // The recorder already has the mic: live text can't run, but the audio is safe.
+    if(err==='audio-capture' && mediaRecorder && mediaRecorder.state==='recording'){
+      status('الكلام مش ظاهر على الشاشة، بس صوتك بيتسجّل عادي. لما تخلص دوس "إنهاء وحفظ".');
+      return;
+    }
     if(err==='not-allowed'||err==='service-not-allowed'||err==='audio-capture'){
       shouldKeepListening=false;
       isListening=false;
@@ -789,6 +802,7 @@ function startListening_(newTurn){
   if(typingActive && currentMode==='answer') return;
 
   if(newTurn){
+    noTextRestarts=0;
     turnFinal='';
     turnInterim='';
     speechActive=false;
@@ -803,19 +817,55 @@ function startListening_(newTurn){
   shouldKeepListening=true;
   isListening=false;
 
-  ensureMediaRecorder_().catch(err=>{
-    shouldKeepListening=false;
-    $('startBtn').disabled=false;
-    $('stopBtn').disabled=true;
-    setStage_('');
-    showError('التسجيل من المايك مبدأش: '+(err&&err.message||String(err)));
-  });
-
   $('modeTitle').textContent=currentMode==='answer' ? 'سامع إجابتك' : 'بسجّل';
   setStage_('recording');
   $('startBtn').disabled=true;
   $('stopBtn').disabled=false;
 
+  // V36.30: open the mic FIRST, then start speech recognition. Starting both at the
+  // same time made iPhone abort the recorder ("The operation was aborted") while the
+  // live text kept going. One retry; if the recorder still can't start, the call
+  // continues on the live text instead of stopping with an error.
+  const myStart=++micStartSeq;
+  openRecorderWithRetry_().then(()=>{
+    if(myStart!==micStartSeq) return;
+    if(!shouldKeepListening){
+      // stopped while the mic was opening: close this late recorder, nothing to keep
+      try{ if(mediaRecorder){ mediaRecorder.ondataavailable=null; if(mediaRecorder.state!=='inactive') mediaRecorder.stop(); } }catch(e){}
+      mediaRecorder=null; releaseMediaStream_();
+      return;
+    }
+    startRecognitionNow_();
+  }).catch(err=>{
+    if(myStart!==micStartSeq) return;
+    const name=String(err&&err.name||'');
+    if(/NotAllowed|Security|NotFound/i.test(name)){
+      shouldKeepListening=false;
+      $('startBtn').disabled=false;
+      $('stopBtn').disabled=true;
+      setStage_('');
+      showError('محتاج إذن المايك. اسمح للموقع يستخدم المايك وجرّب تاني.');
+      return;
+    }
+    console.warn('Recorder failed, continuing with live text: '+(err&&err.message));
+    mediaRecorder=null; audioParts=[];
+    if(!shouldKeepListening) return;
+    status('التسجيل الصوتي مااشتغلش المرة دي، هحفظ بالنص اللي بيظهر قدامك.');
+    startRecognitionNow_();
+  });
+}
+
+async function openRecorderWithRetry_(){
+  try{ await ensureMediaRecorder_(); }
+  catch(e){
+    if(/NotAllowed|Security|NotFound/i.test(String(e&&e.name||''))) throw e;
+    releaseMediaStream_();
+    await new Promise(r=>setTimeout(r,500));
+    await ensureMediaRecorder_();
+  }
+}
+
+function startRecognitionNow_(){
   try{
     recognition=createRecognition_();
     recognition.start();
