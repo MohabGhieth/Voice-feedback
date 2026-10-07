@@ -887,9 +887,10 @@ async function uploadAuthoritativeTurn_(blob){
   $('modeText').textContent='التسجيل بيترفع ويتفرّغ في خطوة واحدة.';
   status('التسجيل ('+sizeTxt+') بيترفع ويتفرّغ...');
   let direct=null;
+  const sentAt=Date.now();
   try{
     const ctrl=('AbortController' in window)?new AbortController():null;
-    const killer=setTimeout(()=>{ try{ctrl&&ctrl.abort();}catch(e){} },150000);
+    const killer=setTimeout(()=>{ try{ctrl&&ctrl.abort();}catch(e){} },110000);
     const res=await fetch(API+'?api=voiceAudio',{method:'POST',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:postBody,redirect:'follow',signal:ctrl?ctrl.signal:undefined});
     clearTimeout(killer);
     direct=JSON.parse(await res.text());
@@ -903,8 +904,12 @@ async function uploadAuthoritativeTurn_(blob){
       try{localStorage.removeItem('MGVOICE_PENDING_AUDIO');}catch(e){}
       return String(direct.transcript);
     }
-    if(direct.state==='error' && direct.retryable===false) throw new Error(direct.message||'التفريغ فشل.');
+    if(direct.state==='error' && direct.retryable===false) throw Object.assign(new Error(direct.message||'التفريغ فشل.'),{transcribeFailed:true});
+    // Stored but Gemini couldn't transcribe it right now (overloaded): don't wait minutes.
+    if(direct.state!=='ready' && direct.message) throw Object.assign(new Error(direct.message),{transcribeFailed:true});
   }
+  // No readable reply after a long wait = the server was busy transcribing and timed out.
+  if(!direct && Date.now()-sentAt>60000) throw Object.assign(new Error('التفريغ أخد وقت طويل.'),{transcribeFailed:true});
 
   let uploadStored=!!(direct && direct.turnId===turnId && direct.state && direct.state!=='error');
   let resent=false;
@@ -1073,6 +1078,10 @@ async function finishTurn_(reason){
   try{ if(recognition) recognition.abort(); }catch(e){}
 
   const t=currentVoiceText_();
+  // Best text the phone already heard (corrected part + newest raw words). Used only
+  // if Gemini can't transcribe the recording, so the call is never lost.
+  let liveBest=t;
+  try{ const lp=liveParts_(); liveBest=((lp.fixed+' '+lp.raw).replace(/\s+/g,' ').trim())||t; }catch(e){}
 
   // Keep showing what was said (corrected where available) while the audio is processed.
   clearTimeout(liveCorrectionTimer);
@@ -1105,15 +1114,25 @@ async function finishTurn_(reason){
   }
 
   let authoritativeText='';
+  let turnErr=null;
   try{
     authoritativeText=await uploadAuthoritativeTurn_(audioBlob);
     if(myGen!==turnGen) return; // a typed answer replaced this voice answer
   }catch(err){
     if(myGen!==turnGen) return;
+    turnErr=err;
+    if(err && !err.authError && liveBest && liveBest.length>=8){
+      // Gemini is down/overloaded: keep going with the live text instead of failing.
+      console.warn('Using live text, transcription failed: '+(err&&err.message));
+      authoritativeText=liveBest;
+      status('Gemini مشغول دلوقتي، كمّلت بالنص اللي ظهر على الشاشة.');
+    }
+  }
+  if(!authoritativeText){
     processing=false; $('startBtn').disabled=false; $('stopBtn').disabled=true;
     setStage_('');
     $('modeTitle').textContent='حصلت مشكلة';
-    showError((err&&err.message)||String(err));
+    showError((turnErr&&turnErr.message)||'التفريغ فشل. جرّب تاني.');
     status('');
     return;
   }
