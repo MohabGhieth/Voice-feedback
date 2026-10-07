@@ -366,16 +366,34 @@ function initGoogle_(){
   google.accounts.id.renderButton($('gBtn'),{theme:'filled_black',size:'large',shape:'pill',text:'signin_with',width:260,locale:'ar'});
   gisReady=true;
 }
+async function loginDirect_(idToken){
+  try{
+    const ctrl=('AbortController' in window)?new AbortController():null;
+    const killer=setTimeout(()=>{ try{ctrl&&ctrl.abort();}catch(e){} },40000);
+    const res=await fetch(API+'?api=voiceLoginDirect',{method:'POST',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:JSON.stringify({idToken:idToken}),redirect:'follow',signal:ctrl?ctrl.signal:undefined});
+    clearTimeout(killer);
+    const d=JSON.parse(await res.text());
+    return (d && typeof d==='object') ? d : null;
+  }catch(e){ return null; }
+}
+
 async function onGoogleCredential_(resp){
   showAuthError_('');
+  const idToken=resp&&resp.credential||'';
+  const msgEl=$('authMsg'); const oldMsg=msgEl.textContent;
+  msgEl.textContent='بسجّل دخولك... ثواني.';
   try{
-    const r=await jsonpRequest({api:'voiceLogin',idToken:resp&&resp.credential||''},25000);
+    // One POST whose reply is read directly; the older JSONP login is only a fallback.
+    let r=await loginDirect_(idToken);
+    // Fallback also when the server doesn't know the new login yet (older deployment).
+    if(!r || (!r.token && !r.errorCode)) r=await jsonpRequest({api:'voiceLogin',idToken:idToken},40000);
+    msgEl.textContent=oldMsg;
     if(r&&r.success&&r.token){
       authState={token:r.token,email:r.email||'',expiresAt:Number(r.expiresAt)||Date.now()+11*3600*1000};
       saveAuth_(); hideAuth_(); status('تم تسجيل الدخول: '+authState.email);
       recoverDurableVoiceSession_();
     }else{ showAuthError_((r&&r.message)||'تسجيل الدخول فشل.'); }
-  }catch(e){ showAuthError_(e.message||String(e)); }
+  }catch(e){ msgEl.textContent=oldMsg; showAuthError_((e.message||String(e))+' دوس على زرار Google تاني.'); }
 }
 async function startAuth_(){
   loadAuth_();
@@ -1214,6 +1232,8 @@ async function processDirect_(session,transcript){
     const res=await fetch(API+'?api=voiceProcessDirect',{method:'POST',headers:{'Content-Type':'text/plain;charset=UTF-8'},body:JSON.stringify({auth:authState.token,session:session,transcript:transcript}),redirect:'follow',signal:ctrl?ctrl.signal:undefined});
     clearTimeout(killer);
     const data=JSON.parse(await res.text());
+    // An older server deployment doesn't know this request yet: use the old path.
+    if(data && data.message==='Unknown POST API.') return null;
     return (data && typeof data==='object') ? data : null;
   }catch(e){ return null; }
 }
