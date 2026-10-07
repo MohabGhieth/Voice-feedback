@@ -1036,10 +1036,15 @@ function startSession(){
   }
 }
 
+// Bumped when a typed answer replaces a voice answer that is still being
+// transcribed; the late voice result is then ignored.
+let turnGen=0;
+
 async function finishTurn_(reason){
   if(processing) return;
 
   processing=true;
+  const myGen=++turnGen;
   shouldKeepListening=false;
   isListening=false;
   speechActive=false;
@@ -1084,7 +1089,9 @@ async function finishTurn_(reason){
   let authoritativeText='';
   try{
     authoritativeText=await uploadAuthoritativeTurn_(audioBlob);
+    if(myGen!==turnGen) return; // a typed answer replaced this voice answer
   }catch(err){
+    if(myGen!==turnGen) return;
     processing=false; $('startBtn').disabled=false; $('stopBtn').disabled=true;
     setStage_('');
     $('modeTitle').textContent='حصلت مشكلة';
@@ -1120,10 +1127,12 @@ async function finishTurn_(reason){
   if(currentMode==='answer'){
     status('براجع الإجابة...');
     correctAnswerContext_(authoritativeText).then(corrected=>{
+      if(myGen!==turnGen) return;
       conversation.push('ANSWER: '+corrected);
       render();
       processConversation();
     }).catch(()=>{
+      if(myGen!==turnGen) return;
       conversation.push('ANSWER: '+authoritativeText);
       render();
       processConversation();
@@ -1537,7 +1546,7 @@ function typedErr_(t){ const e=$('answerErr'); e.textContent=t||''; e.classList.
 
 function sendTypedAnswer_(){
   typedErr_('');
-  if(processing || window.__mgRequestBusy){ typedErr_('استنى ثانية، بخلّص الخطوة اللي قبلها...'); return; }
+  if(window.__mgRequestBusy){ typedErr_('استنى ثانية، بخلّص الخطوة اللي قبلها...'); return; }
   if(currentMode!=='answer' || !questionText){ typedErr_('مفيش سؤال مستني إجابة دلوقتي.'); return; }
   const raw=String($('answerInput').value||'').trim();
   if(!raw){ typedErr_(phoneMode?'اكتب الرقم الأول.':'اكتب الإجابة الأول.'); $('answerInput').focus(); return; }
@@ -1556,6 +1565,9 @@ function sendTypedAnswer_(){
   }else{
     line='ANSWER: '+raw;
   }
+
+  // A voice answer still uploading/transcribing is dropped: the typed one wins.
+  if(processing){ turnGen++; processing=false; }
 
   // Stop any listening/speaking so nothing else answers at the same time.
   shouldKeepListening=false; isListening=false; speechActive=false;
