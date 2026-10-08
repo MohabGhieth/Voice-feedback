@@ -266,6 +266,7 @@ let questionText='';
 let conversation=[];
 let typingActive=false, currentTtsAudio=null;
 let micStartSeq=0;
+let lastResetAt=0;   // V36.36: iPhone needs a moment after the mic is released
 let saveRetries=0, saveRetryTimer=null, pendingSave=false;
 let logicalSession='';
 let mediaStream=null;
@@ -721,8 +722,11 @@ function createRecognition_(){
   r.interimResults=true;
   r.maxAlternatives=3;
   r.lang='ar-EG';
+  // V36.36: every handler first checks it is still the CURRENT recognition. After
+  // "إعادة" the old one's late "end" event restarted a second recognition next to
+  // the new one, and iPhone then heard nothing until the page was reloaded.
 
-  r.onstart=()=>{
+  r.onstart=()=>{ if(r!==recognition) return; 
     clearRecognitionWatchdogs_();
     recognitionStartAttempts=0;
     isListening=true;
@@ -749,7 +753,7 @@ function createRecognition_(){
     status('');
   };
 
-  r.onresult=e=>{
+  r.onresult=e=>{ if(r!==recognition) return; 
     let newestFinal='';
 
     for(let i=e.resultIndex;i<e.results.length;i++){
@@ -781,13 +785,13 @@ function createRecognition_(){
     }
   };
 
-  r.onspeechstart=()=>{ if(!shouldKeepListening) return; speechActive=true; clearTimeout(silenceTimer); };
-  r.onspeechend=()=>{ speechActive=false; if(shouldKeepListening && currentVoiceText_()){ lastSpeechAt=Date.now(); scheduleRealSilence_(); } };
-  r.onsoundstart=()=>{ if(!shouldKeepListening) return; speechActive=true; clearTimeout(silenceTimer); };
-  r.onsoundend=()=>{ speechActive=false; if(shouldKeepListening && currentVoiceText_()){ lastSpeechAt=Date.now(); scheduleRealSilence_(); } };
+  r.onspeechstart=()=>{ if(r!==recognition) return;  if(!shouldKeepListening) return; speechActive=true; clearTimeout(silenceTimer); };
+  r.onspeechend=()=>{ if(r!==recognition) return;  speechActive=false; if(shouldKeepListening && currentVoiceText_()){ lastSpeechAt=Date.now(); scheduleRealSilence_(); } };
+  r.onsoundstart=()=>{ if(r!==recognition) return;  if(!shouldKeepListening) return; speechActive=true; clearTimeout(silenceTimer); };
+  r.onsoundend=()=>{ if(r!==recognition) return;  speechActive=false; if(shouldKeepListening && currentVoiceText_()){ lastSpeechAt=Date.now(); scheduleRealSilence_(); } };
   r.onaudioend=()=>{};
 
-  r.onerror=e=>{
+  r.onerror=e=>{ if(r!==recognition) return; 
     const err=String(e?.error||'unknown');
     if(err==='aborted') return;
     if(err==='no-speech'){
@@ -811,7 +815,7 @@ function createRecognition_(){
     }
   };
 
-  r.onend=()=>{
+  r.onend=()=>{ if(r!==recognition) return; 
     isListening=false;
     if(shouldKeepListening && !processing) scheduleRecognitionRestart_('');
   };
@@ -866,7 +870,9 @@ function startListening_(newTurn){
   // live text kept going. One retry; if the recorder still can't start, the call
   // continues on the live text instead of stopping with an error.
   const myStart=++micStartSeq;
-  openRecorderWithRetry_().then(()=>{
+  const sinceReset=Date.now()-lastResetAt;
+  const settle=sinceReset<900 ? new Promise(r=>setTimeout(r,900-sinceReset)) : Promise.resolve();
+  settle.then(()=>{ if(myStart!==micStartSeq) throw Object.assign(new Error('cancelled'),{cancelled:true}); return openRecorderWithRetry_(); }).then(()=>{
     if(myStart!==micStartSeq) return;
     if(!shouldKeepListening){
       // stopped while the mic was opening: close this late recorder, nothing to keep
@@ -1312,9 +1318,16 @@ async function finishTurn_(reason){
   const firstStory=!conversation.some(l=>/^FEEDBACK\s*:/i.test(l));
   const lastS=lastSaved_();
   const armedHere=appendArmed && appendSession && appendSession===logicalSession;
-  if(firstStory && lastS && (armedHere || saysAppendToLastCall_(authoritativeText)) && !conversation.some(l=>/^META\s*:\s*APPEND_LAST/i.test(l))){
-    conversation.push('META: APPEND_LAST '+(lastS.number||''));
-    $('modeTitle').textContent='بضيف على آخر مكالمة';
+  if(firstStory && !conversation.some(l=>/^META\s*:\s*APPEND_/i.test(l))){
+    if(armedHere && lastS){
+      // button: the client is the one written on the button -> add directly
+      conversation.push('META: APPEND_LAST '+(lastS.number||''));
+      $('modeTitle').textContent='بضيف على آخر مكالمة';
+    }else if(saysAppendToLastCall_(authoritativeText)){
+      // V36.37: said by voice -> the server confirms which client first
+      conversation.push('META: APPEND_ASK '+((lastS&&lastS.number)||''));
+      $('modeTitle').textContent='بتأكد من العميل';
+    }
   }
   conversation.push('FEEDBACK: '+authoritativeText);
   render();
@@ -1942,9 +1955,14 @@ function reset(){
   clearTurnTimers_();
   resetLiveCorrection_();
 
-  try{if(recognition) recognition.abort();}catch(e){}
+  // V36.36: cancel anything still starting or finishing from before the reset.
+  micStartSeq++;
+  turnGen++;
+  lastResetAt=Date.now();
+  const oldRec=recognition; recognition=null;
+  try{ if(oldRec){ oldRec.onend=null; oldRec.onresult=null; oldRec.onerror=null; oldRec.abort(); } }catch(e){}
   try{speechSynthesis.cancel();}catch(e){}
-  try{ if(mediaRecorder && mediaRecorder.state!=='inactive') mediaRecorder.stop(); }catch(e){}
+  try{ if(mediaRecorder){ mediaRecorder.ondataavailable=null; if(mediaRecorder.state!=='inactive') mediaRecorder.stop(); } }catch(e){}
   mediaRecorder=null;
   audioParts=[];
   releaseMediaStream_();
@@ -1976,7 +1994,7 @@ function reset(){
   $('stopBtn').disabled=true;
 
   $('modeTitle').textContent='جاهز';
-  $('modeText').textContent='دوس على المايك مرة واحدة واتكلم براحتك. بعد 3 ثواني سكوت الـ CRM بيعالج كلامك لوحده.';
+  $('modeText').textContent='دوس على المايك مرة واحدة واتكلم براحتك. بعد 6 ثواني سكوت الـ CRM بيعالج كلامك لوحده.';
 
   render();
   status('');
