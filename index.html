@@ -117,11 +117,6 @@ body[data-stage="upload"] .dot,body[data-stage="transcribe"] .dot,body[data-stag
 .entry.live small{color:#FCA5A5;display:flex;align-items:center;gap:6px}
 .entry .fixed{color:var(--text)}
 .entry .raw{color:var(--muted)}
-/* V36.33: while recording, a sound wave instead of uncorrected text */
-.entry.wave{border-inline-start-color:var(--blue,#4F8BFF);background:var(--panel-2)}
-.entry.wave small{color:#93C5FD;display:flex;align-items:center;gap:6px}
-.entry.wave canvas{display:block;width:100%;height:64px;margin-top:6px}
-.entry.wave .hint{display:block;font-size:12.5px;color:var(--muted);margin-top:6px}
 .fixing{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--blue);animation:blink 1s infinite}
 
 .status{min-height:20px;color:var(--muted);font-size:13.5px;line-height:1.55;padding:0 2px}
@@ -230,7 +225,7 @@ body[data-stage="recording"] .mic::before{
     <button id="stopBtn" class="side stop" type="button" disabled>■ إنهاء وحفظ</button>
   </div>
   <div id="usageLine" class="tip" style="margin-bottom:6px"></div>
-  <div class="tip">وإنت بتتكلم هتشوف موجة الصوت بس. الكلام بيتكتب ومتصحح من التسجيل الأصلي بعد ما تخلص، وده اللي بيتحفظ في الـ CRM.</div>
+  <div class="tip">النص بيتصحّح بـ Gemini وإنت بتتكلم. النسخة النهائية بتتعمل من التسجيل الأصلي، وهي اللي بتتحفظ في الـ CRM.</div>
 </main>
 
 <script>
@@ -244,7 +239,7 @@ const CHUNK_SIZE=900;
 const CHUNK_CONCURRENCY=6;
 
 // Live correction (Gemini via voiceCorrect). Interval keeps us inside the free-tier rate limit.
-const LIVE_FIX_INTERVAL_MS=3000;
+const LIVE_FIX_INTERVAL_MS=6000;   // V36.34: half the requests of 3 s
 const LIVE_FIX_MIN_CHARS=8;   // new characters needed before correcting again
 const LIVE_FIX_MAX_CHARS=1700;
 
@@ -339,8 +334,7 @@ function setStage_(stage){
     const allDone=stage==='saved';
     el.classList.toggle('active',el.dataset.stage===stage);
     el.classList.toggle('done',allDone || (idx>0 && i<idx));
-  });  // V36.33: the transcript box shows the wave / "writing" card by stage.
-  try{ if($('transcript')) render(); }catch(e){}
+  });
 }
 function showError(t){ $('error').textContent=t||''; $('error').classList.remove('hidden'); }
 function clearError(){ $('error').textContent=''; $('error').classList.add('hidden'); }
@@ -491,23 +485,17 @@ function render(){
     box.appendChild(card);
   });
 
-  // V36.33: the text is shown only once it is the final, corrected transcription.
-  // While recording: a live sound wave. After stop: the wave calms down until
-  // the transcription arrives.
-  const stage=document.body.dataset.stage||'';
-  if(stage==='recording' || stage==='upload' || stage==='transcribe'){
-    const listening=stage==='recording';
-    const card=el_('div','entry wave');
+  // V36.34: live text is back (the user wants to see the words as he talks).
+  const live=liveParts_();
+  if(live.fixed || live.raw){
+    const card=el_('div','entry live');
     const label=el_('small');
-    if(!listening) label.appendChild(el_('span','fixing'));
-    label.appendChild(document.createTextNode(listening
-      ? (currentMode==='answer' ? 'سامع إجابتك...' : 'سامعك... احكي براحتك')
-      : 'بكتب كلامك من التسجيل...'));
+    if(liveFixInFlight) label.appendChild(el_('span','fixing'));
+    label.appendChild(document.createTextNode(liveFixInFlight?'بيتكلم دلوقتي — Gemini بيصحّح...':'بيتكلم دلوقتي'));
     card.appendChild(label);
-    card.appendChild(waveCanvas_());
-    if(listening) card.appendChild(el_('span','hint','الكلام هيظهر مكتوب ومتصحح بعد ما تخلص.'));
+    if(live.fixed) card.appendChild(el_('span','fixed',live.fixed+(live.raw?' ':'')));
+    if(live.raw) card.appendChild(el_('span','raw',live.raw));
     box.appendChild(card);
-    startWaveLoop_();
   }
 
   if(!box.childNodes.length){
@@ -517,75 +505,6 @@ function render(){
     box.appendChild(empty);
   }
   box.scrollTop=box.scrollHeight;
-}
-
-// ===== V36.33 sound wave =====
-let waveCanvasEl=null, waveCtx=null, waveAnalyser=null, waveData=null, waveRaf=null, wavePhase=0;
-let waveLevel=0;
-function waveCanvas_(){
-  if(!waveCanvasEl){ waveCanvasEl=document.createElement('canvas'); waveCanvasEl.setAttribute('aria-hidden','true'); }
-  return waveCanvasEl;
-}
-function attachWaveToStream_(stream){
-  detachWave_();
-  try{
-    const AC=window.AudioContext||window.webkitAudioContext;
-    if(!AC || !stream) return;
-    waveCtx=new AC();
-    if(waveCtx.state==='suspended'){ try{ waveCtx.resume(); }catch(e){} }
-    const src=waveCtx.createMediaStreamSource(stream);
-    waveAnalyser=waveCtx.createAnalyser();
-    waveAnalyser.fftSize=512;
-    waveAnalyser.smoothingTimeConstant=0.6;
-    waveData=new Uint8Array(waveAnalyser.fftSize);
-    src.connect(waveAnalyser); // not connected to the speakers: no echo
-  }catch(e){ detachWave_(); }
-}
-function detachWave_(){
-  if(waveCtx){ try{ waveCtx.close(); }catch(e){} }
-  waveCtx=null; waveAnalyser=null; waveData=null;
-}
-function micLevel_(){
-  // Real mic level when available; otherwise move with the speech events.
-  if(waveAnalyser && waveData && waveCtx && waveCtx.state==='running'){
-    waveAnalyser.getByteTimeDomainData(waveData);
-    let sum=0; for(let i=0;i<waveData.length;i++){ const v=(waveData[i]-128)/128; sum+=v*v; }
-    return Math.min(1, Math.sqrt(sum/waveData.length)*4.5);
-  }
-  const recent=lastSpeechAt && (Date.now()-lastSpeechAt<700);
-  return (recent||speechActive) ? 0.55+Math.random()*0.35 : 0.06;
-}
-function startWaveLoop_(){
-  if(waveRaf) return;
-  const draw=function(){
-    const stage=document.body.dataset.stage||'';
-    const c=waveCanvasEl;
-    if(!c || !c.isConnected || (stage!=='recording' && stage!=='upload' && stage!=='transcribe')){ waveRaf=null; return; }
-    const listening=stage==='recording';
-    const dpr=window.devicePixelRatio||1, w=c.clientWidth||300, h=c.clientHeight||64;
-    if(c.width!==Math.round(w*dpr)||c.height!==Math.round(h*dpr)){ c.width=Math.round(w*dpr); c.height=Math.round(h*dpr); }
-    const g=c.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,w,h);
-    const target=listening ? micLevel_() : 0.12;
-    waveLevel+= (target-waveLevel)*(target>waveLevel?0.45:0.12);
-    wavePhase+= listening ? 0.16 : 0.07;
-    const bars=Math.max(18,Math.floor(w/9)), bw=w/bars;
-    const css=getComputedStyle(document.documentElement);
-    const blue=(css.getPropertyValue('--blue')||'#4F8BFF').trim()||'#4F8BFF';
-    for(let i=0;i<bars;i++){
-      const x=i*bw;
-      const env=Math.sin(Math.PI*(i+0.5)/bars);
-      const osc=0.55+0.45*Math.sin(wavePhase+i*0.55)*Math.cos(wavePhase*0.6+i*0.21);
-      const bh=Math.max(3,(h-6)*env*(0.08+waveLevel*0.92)*osc);
-      g.fillStyle=blue; g.globalAlpha=listening?0.95:0.55;
-      const y=(h-bh)/2, r=Math.min(bw*0.3,3);
-      g.beginPath();
-      if(g.roundRect) g.roundRect(x+bw*0.2,y,bw*0.6,bh,r); else g.rect(x+bw*0.2,y,bw*0.6,bh);
-      g.fill();
-    }
-    g.globalAlpha=1;
-    waveRaf=requestAnimationFrame(draw);
-  };
-  waveRaf=requestAnimationFrame(draw);
 }
 
 function ctor(){
@@ -819,8 +738,9 @@ function createRecognition_(){
     render();
     scheduleRealSilence_();
 
-    // V36.33: no live Gemini correction: the live text is not shown any more,
-    // and those requests were half the daily use, competing with the transcription.
+    if(currentMode==='call' && !phoneMode){
+      queueLiveCorrection_();
+    }
   };
 
   r.onspeechstart=()=>{ if(!shouldKeepListening) return; speechActive=true; clearTimeout(silenceTimer); };
@@ -966,7 +886,6 @@ function startRecognitionNow_(){
 // iPhone fix: never keep the mic open between turns. A stream held from an earlier
 // turn goes stale on iOS, and then the live speech recognition hears nothing.
 function releaseMediaStream_(){
-  detachWave_();
   if(mediaStream){ try{ mediaStream.getTracks().forEach(t=>t.stop()); }catch(e){} }
   mediaStream=null;
 }
@@ -989,7 +908,6 @@ async function ensureMediaRecorder_(){
   try{ rec=new MediaRecorder(mediaStream,recOpts); }
   catch(e){ rec=new MediaRecorder(mediaStream, chosen?{mimeType:chosen}:undefined); }
   mediaRecorder=rec;
-  attachWaveToStream_(mediaStream);
   // Only the current recorder may add audio, so a late chunk from an old recording
   // can never leak into the next call.
   rec.ondataavailable=e=>{ if(rec===mediaRecorder && e.data && e.data.size) audioParts.push(e.data); };
