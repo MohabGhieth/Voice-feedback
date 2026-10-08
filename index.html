@@ -156,6 +156,9 @@ body[data-stage="recording"] .mic::before{
 .stop{background:var(--red);color:#fff}
 .stop:disabled{background:var(--panel-2);color:var(--muted)}
 .reset{background:var(--panel-2);color:var(--text);border:1px solid var(--line)}
+.appendBtn{width:100%;margin:0 0 10px;height:44px;border-radius:12px;font-size:14px;font-weight:600;
+  background:var(--blue-soft);color:#BFDBFE;border:1px solid var(--blue)}
+.appendBtn.armed{background:var(--blue);color:#fff}
 .ghost{background:transparent;color:var(--muted);border:1px solid var(--line);border-radius:10px;padding:7px 11px;font-size:12px;font-weight:500}
 
 .tip{color:var(--muted);font-size:12px;line-height:1.6;text-align:center;padding:0 8px}
@@ -217,6 +220,7 @@ body[data-stage="recording"] .mic::before{
   <div id="status" class="status"></div>
   <div id="error" class="error hidden"></div>
 
+  <button id="appendBtn" class="appendBtn hidden" type="button"></button>
   <div class="controls">
     <button id="resetBtn" class="side reset" type="button">↺ إعادة</button>
     <button id="startBtn" class="mic" type="button" aria-label="ابدأ التسجيل">
@@ -415,13 +419,47 @@ async function startAuth_(){
   if(!isAuthValid_()){ showAuth_(); return; }
   try{
     const r=await jsonpRequest({api:'voiceAuthCheck'},15000);
-    if(r&&r.authorized){ authState.email=r.email||authState.email; saveAuth_(); hideAuth_(); recoverDurableVoiceSession_(); }
+    if(r&&r.authorized){
+      authState.email=r.email||authState.email;
+      // V36.35: the server renews the login on every open (60 days).
+      if(r.token && Number(r.expiresAt)>authState.expiresAt){ authState.token=r.token; authState.expiresAt=Number(r.expiresAt); }
+      saveAuth_(); hideAuth_(); recoverDurableVoiceSession_();
+    }
     else showAuth_();
   }catch(e){
     // The saved login is still valid locally, and the server re-checks it on every
     // request anyway, so a slow reply here is not a reason to show an error.
     if(!e.authError){ hideAuth_(); recoverDurableVoiceSession_(); }
   }
+}
+
+// ===== V36.35: add to the last saved call =====
+const LAST_SAVED_KEY='MGVOICE_LAST_SAVED';
+const APPEND_WINDOW_MS=12*60*60*1000;
+let appendArmed=false;      // the button was pressed
+let appendSession='';       // ...for this recording only (never leaks into a later call)
+function lastSaved_(){
+  try{ const o=JSON.parse(localStorage.getItem(LAST_SAVED_KEY)||'null'); if(o && o.at && Date.now()-o.at<APPEND_WINDOW_MS) return o; }catch(e){}
+  return null;
+}
+function rememberLastSaved_(data){
+  try{ localStorage.setItem(LAST_SAVED_KEY,JSON.stringify({name:data.clientName||'',number:data.clientNumber||'',at:Date.now()})); }catch(e){}
+}
+function paintAppendBtn_(){
+  const b=$('appendBtn'); if(!b) return;
+  const last=lastSaved_();
+  const busy=processing||window.__mgRequestBusy||shouldKeepListening||currentMode==='answer';
+  if(!last || (busy && !appendArmed)){ b.classList.add('hidden'); return; }
+  b.classList.remove('hidden');
+  b.classList.toggle('armed',appendArmed);
+  b.textContent=appendArmed
+    ? '➕ اللي هتقوله هيتضاف على مكالمة '+(last.name||'آخر عميل')+' — دوس تاني للإلغاء'
+    : '➕ ضيف على آخر مكالمة'+(last.name?(': '+last.name):'');
+}
+// "ضيف دي على نفس الكول" said in the story
+function saysAppendToLastCall_(text){
+  const t=String(text||'').replace(/[ًٌٍَُِّْ]/g,'').replace(/[أإآ]/g,'ا').replace(/ة/g,'ه').replace(/ى/g,'ي');
+  return /(ضيف|اضيف|ضيفي|ضيفها|ضيفه|زود|حط|حطها|كمل|كملها)[^.؟?!،,]{0,30}(نفس|اخر|لاخر)\s*(ال)?(كول|كوول|مكالمه|فيدباك|فيد باك|call|feedback)/i.test(t);
 }
 
 function currentVoiceText_(){
@@ -1270,6 +1308,14 @@ async function finishTurn_(reason){
   // V36.32: tell the server this story is the phone's live text (Gemini couldn't
   // transcribe the recording), so it may use its corrected copy instead.
   if(usedLiveTextFallback && conversation.indexOf('META: LIVE_TEXT')<0) conversation.push('META: LIVE_TEXT');
+  // V36.35: the "add to last call" button, or "ضيف دي على نفس الكول" in the story.
+  const firstStory=!conversation.some(l=>/^FEEDBACK\s*:/i.test(l));
+  const lastS=lastSaved_();
+  const armedHere=appendArmed && appendSession && appendSession===logicalSession;
+  if(firstStory && lastS && (armedHere || saysAppendToLastCall_(authoritativeText)) && !conversation.some(l=>/^META\s*:\s*APPEND_LAST/i.test(l))){
+    conversation.push('META: APPEND_LAST '+(lastS.number||''));
+    $('modeTitle').textContent='بضيف على آخر مكالمة';
+  }
   conversation.push('FEEDBACK: '+authoritativeText);
   render();
   processConversation();
@@ -1340,7 +1386,13 @@ function makeSession_(){
 }
 
 async function sendConversationChunk_(session,index,total,text){
-  return jsonpRequest({api:'voiceChunk',session:session,index:String(index),total:String(total),text:text});
+  // V36.35: one slow piece used to end the whole save with "السيرفر ما ردش في الوقت".
+  let lastErr=null;
+  for(let attempt=0;attempt<3;attempt++){
+    try{ return await jsonpRequest({api:'voiceChunk',session:session,index:String(index),total:String(total),text:text},30000); }
+    catch(e){ if(e.authError) throw e; lastErr=e; await sleep_(1500*(attempt+1)); }
+  }
+  throw lastErr||new Error('الشبكة ضعيفة. المكالمة لسه عندك، دوس "إنهاء وحفظ" تاني.');
 }
 
 const sleep_=ms=>new Promise(r=>setTimeout(r,ms));
@@ -1418,7 +1470,15 @@ async function processConversation(){
   // ONE REQUEST: send the whole conversation and get the result in the same reply.
   // Falls back to the older chunk + JSONP path only if the browser can't read the reply.
   status('Gemini بيحلل المكالمة ويحفظها...');
-  const direct=await processDirect_(session,transcript);
+  const tDirect=Date.now();
+  let direct=await processDirect_(session,transcript);
+  if(!direct && Date.now()-tDirect<20000){
+    // V36.35: the request failed fast (weak signal, never reached the server): try once
+    // more. A slow failure is not repeated; the backup path below picks up the result.
+    status('الشبكة ضعيفة... بحاول تاني.');
+    await sleep_(2000);
+    direct=await processDirect_(session,transcript);
+  }
   if(direct){
     if(direct.errorCode && AUTH_CODES_.indexOf(direct.errorCode)>=0){ authLost_(direct.message); return; }
     if(!direct.retry){ handleResult(direct); return; }
@@ -1667,8 +1727,13 @@ function handleResult(data){
     currentMode='call';
     phoneMode=false;
 
-    $('modeTitle').textContent='اتحفظت ✓';
-    $('modeText').textContent='المكالمة اتصححت واتحفظت. جاهز للمكالمة اللي بعدها.';
+    const appended=data.status==='appended';
+    $('modeTitle').textContent=appended?'اتضافت ✓':'اتحفظت ✓';
+    $('modeText').textContent=appended
+      ? 'اتضافت على آخر مكالمة'+(data.clientName?(' ('+data.clientName+')'):'')+'. جاهز للمكالمة اللي بعدها.'
+      : 'المكالمة اتصححت واتحفظت. جاهز للمكالمة اللي بعدها.';
+    appendArmed=false; appendSession='';
+    rememberLastSaved_(data);
 
     conversation=data.feedback ? ['CORRECTED FEEDBACK: '+data.feedback] : [];
     render();
@@ -1681,6 +1746,7 @@ function handleResult(data){
 
     $('startBtn').disabled=false;
     $('stopBtn').disabled=true;
+    paintAppendBtn_();
     return;
   }
 
@@ -1920,7 +1986,18 @@ function reset(){
 
 $('startBtn').onclick=function(){ typingActive=false; try{ $('answerInput').blur(); }catch(e){} startSession(); };
 $('stopBtn').onclick=stopNow;
-$('resetBtn').onclick=reset;
+$('resetBtn').onclick=function(){ appendArmed=false; appendSession=''; reset(); paintAppendBtn_(); };
+$('appendBtn').onclick=function(){
+  // tap again (even while recording) = cancel: the recording becomes a normal call
+  if(appendArmed){ appendArmed=false; appendSession=''; paintAppendBtn_(); return; }
+  if(shouldKeepListening || processing || window.__mgRequestBusy) return;
+  appendArmed=true; paintAppendBtn_();
+  typingActive=false; try{ $('answerInput').blur(); }catch(e){}
+  startSession();
+  appendSession=logicalSession; // startSession() made the new session synchronously
+};
+setInterval(paintAppendBtn_,2000);
+try{ paintAppendBtn_(); }catch(e){}
 $('signOutBtn').onclick=function(){
   clearAuth_(); renderUser_();
   try{ reset(); }catch(e){}
