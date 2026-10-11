@@ -2032,7 +2032,17 @@ function reset(){
 
 $('startBtn').onclick=function(){ typingActive=false; try{ $('answerInput').blur(); }catch(e){} startSession(); };
 $('stopBtn').onclick=stopNow;
-$('resetBtn').onclick=function(){ appendArmed=false; appendSession=''; reset(); paintAppendBtn_(); };
+// V36.40: "إعادة" reloads the page. After a reset inside the page, iPhone kept the mic in a
+// bad state (no live text, and the next recording did not save) until a manual refresh.
+// A reload is exactly that refresh: login and the mic permission are kept, the old call is
+// dropped, and the "add to last call" button still knows the last saved client.
+$('resetBtn').onclick=function(){
+  appendArmed=false; appendSession='';
+  try{ reset(); }catch(e){}
+  try{ localStorage.removeItem('MGVOICE_SESSION'); localStorage.removeItem('MGVOICE_PENDING_AUDIO'); }catch(e){}
+  $('modeTitle').textContent='بجهّز من جديد...';
+  setTimeout(function(){ try{ location.reload(); }catch(e){ paintAppendBtn_(); } },150);
+};
 $('appendBtn').onclick=function(){
   // tap again (even while recording) = cancel: the recording becomes a normal call
   if(appendArmed){ appendArmed=false; appendSession=''; paintAppendBtn_(); return; }
