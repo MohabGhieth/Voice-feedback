@@ -271,6 +271,7 @@ let saveRetries=0, saveRetryTimer=null, pendingSave=false;
 let logicalSession='';
 let mediaStream=null;
 let noTextHintTimer=null, noTextRestarts=0;
+let micBusyRetries=0;   // V36.39: "audio-capture" = mic busy for a moment, not blocked
 let mediaRecorder=null;
 let audioParts=[];
 let audioMimeType='audio/webm';
@@ -804,13 +805,39 @@ function createRecognition_(){
       status('صوتك بيتسجّل عادي. لما تخلص دوس "إنهاء وحفظ".');
       return;
     }
-    if(err==='not-allowed'||err==='service-not-allowed'||err==='audio-capture'){
+    // V36.39: "audio-capture" is NOT a permission problem. iPhone gives it when the mic
+    // is still held (after a phone call, another app, the screen locking, or a page
+    // left open for days). Free the mic, wait a moment and start again by itself.
+    if(err==='audio-capture'){
+      if(micBusyRetries<2 && shouldKeepListening){
+        micBusyRetries++;
+        status('بجهّز المايك تاني...');
+        isListening=false;
+        const old=recognition; recognition=null;
+        try{ if(old){ old.onend=null; old.abort(); } }catch(e){}
+        try{ if(mediaRecorder){ mediaRecorder.ondataavailable=null; if(mediaRecorder.state!=='inactive') mediaRecorder.stop(); } }catch(e){}
+        mediaRecorder=null; audioParts=[];
+        releaseMediaStream_();
+        lastResetAt=Date.now();          // startListening_ waits for iPhone to free the mic
+        setTimeout(()=>{ if(shouldKeepListening && !processing) startListening_(false); },300);
+        return;
+      }
       shouldKeepListening=false;
       isListening=false;
       $('startBtn').disabled=false;
       $('stopBtn').disabled=true;
       setStage_('');
-      showError('المايك مقفول للموقع ده. افتح صلاحية المايك من إعدادات المتصفح وجرّب تاني. ('+err+')');
+      showError('المايك مشغول دلوقتي (مكالمة أو تطبيق تاني بيستخدمه). اقفل التاب ده خالص وافتحه تاني، وبعدين دوس على المايك.');
+      status('');
+      return;
+    }
+    if(err==='not-allowed'||err==='service-not-allowed'){
+      shouldKeepListening=false;
+      isListening=false;
+      $('startBtn').disabled=false;
+      $('stopBtn').disabled=true;
+      setStage_('');
+      showError('المايك مقفول للموقع ده. من aA ثم Website Settings ثم Microphone اختار Allow، وجرّب تاني.');
       status('');
     }
   };
@@ -846,6 +873,7 @@ function startListening_(newTurn){
 
   if(newTurn){
     noTextRestarts=0;
+    micBusyRetries=0;
     turnFinal='';
     turnInterim='';
     speechActive=false;
@@ -2015,6 +2043,19 @@ $('appendBtn').onclick=function(){
   appendSession=logicalSession; // startSession() made the new session synchronously
 };
 setInterval(paintAppendBtn_,2000);
+// V36.39: coming back to the page (screen unlocked, back from another app, a tab left for
+// days): if nothing is running, drop any stale mic/recognition so the next start is fresh.
+function freshenMicIfIdle_(){
+  if(shouldKeepListening || processing || window.__mgRequestBusy) return;
+  const old=recognition; recognition=null;
+  try{ if(old){ old.onend=null; old.onresult=null; old.onerror=null; old.abort(); } }catch(e){}
+  try{ if(mediaRecorder){ mediaRecorder.ondataavailable=null; if(mediaRecorder.state!=='inactive') mediaRecorder.stop(); } }catch(e){}
+  mediaRecorder=null;
+  releaseMediaStream_();
+  lastResetAt=Date.now();
+}
+document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible') freshenMicIfIdle_(); });
+window.addEventListener('pageshow',function(){ freshenMicIfIdle_(); });
 try{ paintAppendBtn_(); }catch(e){}
 $('signOutBtn').onclick=function(){
   clearAuth_(); renderUser_();
