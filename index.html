@@ -1560,6 +1560,18 @@ async function processConversation(){
     $('modeTitle').textContent='حصلت مشكلة';
     showError(e.message||String(e));
     status('');
+    afterFailedRequest_();
+  }
+}
+
+// V36.44: a request failed while a question is open -> the old "استنى ثانية" note is
+// cleared and the last answer is taken back, so you can send it again right away.
+function afterFailedRequest_(){
+  try{ typedErr_(''); }catch(e){}
+  if(currentMode==='answer' && questionText){
+    const last=conversation[conversation.length-1]||'';
+    if(/^ANSWER\s*:/i.test(last)) conversation.pop();
+    status('اكتب الإجابة تاني ودوس إرسال، أو رد بالمايك.');
   }
 }
 
@@ -1857,6 +1869,7 @@ function handleResult(data){
   showError(data.message||'الـ CRM مقدرش يعالج المكالمة.');
   $('startBtn').disabled=false;
   $('stopBtn').disabled=true;
+  afterFailedRequest_();
 }
 
 // Errors show right under the box (the keyboard hides the page's main error area).
