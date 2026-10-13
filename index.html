@@ -1622,14 +1622,7 @@ function localClarificationAnswer_(question, raw){
     if(/\brefell\b|\breferral\b|ريفيل|ريفيرال/.test(s)) return 'Refell';
   }
 
-  if(/نوع الوحدة|الوحدة|unit type|property type|مهتم بإيه/.test(q)){
-    const s=a.toLowerCase();
-    if(/stand\s*alone|standalone|ستاند|استاندر|ستاندالون/.test(s)) return 'Standalone';
-    if(/twin\s*house|توين|توأم/.test(s)) return 'Twin House';
-    if(/town\s*house|تاون/.test(s)) return 'Town House';
-    if(/villa|فيلا/.test(s)) return 'Villa';
-    if(/apartment|شقة|شقه/.test(s)) return 'Apartment';
-  }
+  // V36.43: unit types are open (S Villa, Quattro, Office, Factory...): the server maps them.
 
   if(/المكان|المشروع|location|project|compound|area|منطقة/.test(q)){
     if(/جروفا|جرووفا|جروبا|برووفا|groova/i.test(a)) return 'Groova';
@@ -1744,8 +1737,8 @@ function arabicQuestion(data){
     const map={
       'Client Name':'تمام، قولّي اسم العميل.',
       'Client Number':'تمام، قولّي رقم الموبايل رقم رقم، وخد وقتك وأنا مستنيك تخلص.',
-      'Source':'تمام، الليد ده جالك منين؟ Element، Direct، Adel، FB، Cold Call، ولا Refell؟',
-      'Unit Type':'تمام، العميل مهتم بإيه؟ فيلا، Twin House، Town House، شقة، ولا نوع تاني؟',
+      'Source':'تمام، الليد ده جالك منين؟ Element، Direct، Adel، FB، Cold Call، Refell، أو قول أي مصدر تاني.',
+      'Unit Type':'تمام، العميل مهتم بإيه؟ Villa، Standalone، S Villa، Town House، Twin House، Quattro، Apartment، Office، Building، Factory، أو أي نوع تاني.',
       'Location':'حلو، العميل بيدور في أنهي مشروع أو منطقة؟',
       'Delivery Date':'تمام، وعايز الاستلام إمتى؟',
       'Budget':'حلو، والميزانية اللي العميل حاططها في حدود كام؟'
@@ -1757,7 +1750,7 @@ function arabicQuestion(data){
   if(data.type==='PHONE_REQUIRED') return 'تمام، قولّي رقم الموبايل رقم رقم، وخد وقتك وأنا مستنيك تخلص.';
   if(data.type==='PHONE_CONFIRMATION_REQUIRED') return data.question||'أنا فهمت رقم الموبايل. الرقم ده صح؟';
   if(data.type==='NEW_CLIENT_MISSING_DATA') return 'تمام، قولّي اسم العميل.';
-  if(data.type==='SOURCE_REQUIRED') return 'تمام، الليد ده جالك منين؟ Element، Direct، Adel، FB، Cold Call، ولا Refell؟';
+  if(data.type==='SOURCE_REQUIRED') return 'تمام، الليد ده جالك منين؟ Element، Direct، Adel، FB، Cold Call، Refell، أو قول أي مصدر تاني.';
   if(data.type==='CLIENT_NOT_FOUND') return 'مش قادر أحدد الليد. قولّي اسم العميل أو آخر أربع أرقام من الموبايل.';
   if(data.type==='MULTIPLE_CLIENTS') return data.message||'لقيت أكتر من تطابق. قولّي اسم العميل أو آخر أربع أرقام من الموبايل.';
   return null;
