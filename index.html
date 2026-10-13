@@ -438,6 +438,7 @@ async function startAuth_(){
 // ===== V36.35: add to the last saved call =====
 const LAST_SAVED_KEY='MGVOICE_LAST_SAVED';
 const APPEND_WINDOW_MS=12*60*60*1000;
+let lastSaveFromLive=false;  // V36.40: the saved story is the phone's live text
 let appendArmed=false;      // the button was pressed
 let appendSession='';       // ...for this recording only (never leaks into a later call)
 function lastSaved_(){
@@ -517,10 +518,13 @@ function render(){
     const s=String(line||'');
     if(/^QUESTION\s*:/i.test(s) || /^ANSWER\s*:/i.test(s) || /^META\s*:/i.test(s)) return;
     const saved=/^CORRECTED FEEDBACK\s*:/i.test(s);
+    const fromLive=saved && lastSaveFromLive;
     const text=maskConversationForDisplay_(s.replace(/^(CORRECTED FEEDBACK|FEEDBACK)\s*:\s*/i,''));
     if(!text) return;
     const card=el_('div','entry'+(saved?' saved':''));
-    card.appendChild(el_('small',null,saved?'✓ اتحفظ في الـ CRM':'المكالمة'));
+    card.appendChild(el_('small',null,saved
+      ? (fromLive ? '✓ اتحفظ في الـ CRM — ⚠ من النص المباشر (Gemini كان زحمة وماقدرش يفرّغ التسجيل)' : '✓ اتحفظ في الـ CRM')
+      : 'المكالمة'));
     card.appendChild(document.createTextNode(text));
     box.appendChild(card);
   });
@@ -1029,6 +1033,7 @@ async function uploadAuthoritativeTurn_(blob){
   $('modeText').textContent='التسجيل بيترفع ويتفرّغ في خطوة واحدة.';
   status('التسجيل ('+sizeTxt+') بيترفع ويتفرّغ...');
   let direct=null;
+  let busyRetry=false;
   const sentAt=Date.now();
   try{
     const ctrl=('AbortController' in window)?new AbortController():null;
@@ -1047,8 +1052,13 @@ async function uploadAuthoritativeTurn_(blob){
       return String(direct.transcript);
     }
     if(direct.state==='error' && direct.retryable===false) throw Object.assign(new Error(direct.message||'التفريغ فشل.'),{transcribeFailed:true});
-    // Stored but Gemini couldn't transcribe it right now (overloaded): don't wait minutes.
-    if(direct.state!=='ready' && direct.message) throw Object.assign(new Error(direct.message),{transcribeFailed:true});
+    // V36.40: Gemini busy -> ask the server ONCE more on the real recording before
+    // falling back to the weaker live text.
+    if(direct.state!=='ready' && direct.message){
+      if(Date.now()-sentAt>95000) throw Object.assign(new Error(direct.message),{transcribeFailed:true});
+      busyRetry=true;
+      status('Gemini زحمة، بحاول تاني على التسجيل الأصلي عشان الكلام يطلع مظبوط...');
+    }
   }
   // No readable reply after a long wait = the server was busy transcribing and timed out.
   if(!direct && Date.now()-sentAt>60000) throw Object.assign(new Error('التفريغ أخد وقت طويل.'),{transcribeFailed:true});
@@ -1099,6 +1109,8 @@ async function uploadAuthoritativeTurn_(blob){
     const t=queued.transcript ? String(queued.transcript) : await fetchReadyTranscript_(turnId);
     if(t){ try{localStorage.removeItem('MGVOICE_PENDING_AUDIO');}catch(e){} return t; }
   }
+  // V36.40: the second try didn't make it either -> use the live text now, don't poll for minutes.
+  if(busyRetry) throw Object.assign(new Error('Gemini مشغول.'),{transcribeFailed:true});
 
   let pollFails=0, requeues=0;
   for(let i=0;i<180;i++){
@@ -1776,6 +1788,7 @@ function handleResult(data){
     appendArmed=false; appendSession='';
     rememberLastSaved_(data);
 
+    lastSaveFromLive=conversation.some(l=>/^META\s*:\s*LIVE_TEXT/i.test(String(l)));
     conversation=data.feedback ? ['CORRECTED FEEDBACK: '+data.feedback] : [];
     render();
     saveRetries=0; pendingSave=false;
@@ -1804,11 +1817,13 @@ function handleResult(data){
   // Gemini overloaded: the call is NOT lost. Retry automatically, then let the
   // user retry with "إنهاء وحفظ" (it used to end in an error and the call was gone).
   if(/temporarily unavailable|high demand|\b503\b|\b429\b|overloaded/i.test(String(data.message||''))){
-    if(saveRetries<1){
+    // V36.41: up to 4 automatic tries (15, 25, 40, 60 s) before asking you to press again.
+    const waits=[15,25,40,60];
+    if(saveRetries<waits.length){
+      let left=waits[saveRetries];
       saveRetries++;
       setStage_('ai');
-      $('modeTitle').textContent='Gemini زحمة';
-      let left=15;
+      $('modeTitle').textContent='Gemini زحمة — محاولة '+(saveRetries+1)+' من '+(waits.length+1);
       status('Gemini زحمة دلوقتي. هحاول تاني خلال '+left+' ثانية... المكالمة محفوظة عندك.');
       clearInterval(saveRetryTimer);
       saveRetryTimer=setInterval(()=>{
