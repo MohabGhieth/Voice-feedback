@@ -120,7 +120,7 @@ body[data-stage="upload"] .dot,body[data-stage="transcribe"] .dot,body[data-stag
 .fixing{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--blue);animation:blink 1s infinite}
 
 .status{min-height:20px;color:var(--muted);font-size:13.5px;line-height:1.55;padding:0 2px}
-.error{
+.error{white-space:pre-line;
   padding:12px 14px;border-radius:14px;color:#FECACA;background:var(--red-soft);
   border:1px solid rgba(239,68,68,.35);line-height:1.6;font-size:14px;
 }
@@ -1814,6 +1814,19 @@ function handleResult(data){
     return;
   }
 
+  // V36.42: free daily quota used up -> retrying is useless until it resets.
+  if(/GEMINI_QUOTA_EXHAUSTED/.test(String(data.message||''))){
+    clearInterval(saveRetryTimer); saveRetryTimer=null; saveRetries=0;
+    pendingSave=true;
+    setStage_('');
+    $('modeTitle').textContent='الحصة اليومية خلصت';
+    showError('الحصة المجانية بتاعة Gemini النهارده خلصت من ناحية جوجل. المكالمة لسه موجودة هنا — الحصة بتتجدد الساعة 10:00 الصبح بتوقيت مصر، ساعتها دوس "إنهاء وحفظ".');
+    status('');
+    $('startBtn').disabled=false;
+    $('stopBtn').disabled=false;
+    return;
+  }
+
   // Gemini overloaded: the call is NOT lost. Retry automatically, then let the
   // user retry with "إنهاء وحفظ" (it used to end in an error and the call was gone).
   if(/temporarily unavailable|high demand|\b503\b|\b429\b|overloaded/i.test(String(data.message||''))){
@@ -1838,7 +1851,8 @@ function handleResult(data){
     pendingSave=true;
     setStage_('');
     $('modeTitle').textContent='Gemini زحمة';
-    showError('Gemini عليه ضغط من جوجل دلوقتي. المكالمة لسه موجودة، استنى دقيقة ودوس "إنهاء وحفظ" عشان تحاول تاني.');
+    showError('Gemini عليه ضغط من جوجل دلوقتي. المكالمة لسه موجودة، استنى دقيقة ودوس "إنهاء وحفظ" عشان تحاول تاني.'+
+      '\n(السبب: '+String(data.message||'').replace(/^.*Last error:\s*/,'').slice(0,140)+')');
     status('');
     $('startBtn').disabled=false;
     $('stopBtn').disabled=false;
