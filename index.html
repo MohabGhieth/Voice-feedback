@@ -229,7 +229,7 @@ body[data-stage="recording"] .mic::before{
     <button id="stopBtn" class="side stop" type="button" disabled>■ إنهاء وحفظ</button>
   </div>
   <div id="usageLine" class="tip" style="margin-bottom:6px"></div>
-  <div class="tip">النص بيتصحّح بـ Gemini وإنت بتتكلم. النسخة النهائية بتتعمل من التسجيل الأصلي، وهي اللي بتتحفظ في الـ CRM.</div>
+  <div class="tip">وإنت بتتكلم مش هيظهر كلام. الكلام بيتكتب ومتصحح من التسجيل الأصلي بعد ما تخلص، وده اللي بيتحفظ في الـ CRM.</div>
 </main>
 
 <script>
@@ -341,6 +341,7 @@ function setStage_(stage){
     el.classList.toggle('active',el.dataset.stage===stage);
     el.classList.toggle('done',allDone || (idx>0 && i<idx));
   });
+  try{ if(typeof conversation!=='undefined' && $('transcript')) render(); }catch(e){}
 }
 function showError(t){ $('error').textContent=t||''; $('error').classList.remove('hidden'); }
 function clearError(){ $('error').textContent=''; $('error').classList.add('hidden'); }
@@ -529,16 +530,22 @@ function render(){
     box.appendChild(card);
   });
 
-  // V36.34: live text is back (the user wants to see the words as he talks).
-  const live=liveParts_();
-  if(live.fixed || live.raw){
+  // V36.45: while recording NO text is shown (the phone's live text was wrong and
+  // distracting). Only a quiet note; the real text appears once, from the recording.
+  // (No sound wave either: that opened the mic a second time and broke iPhone recording.)
+  const stg=document.body.dataset.stage||'';
+  if(stg==='recording' || stg==='upload' || stg==='transcribe'){
+    const rec=stg==='recording';
     const card=el_('div','entry live');
     const label=el_('small');
-    if(liveFixInFlight) label.appendChild(el_('span','fixing'));
-    label.appendChild(document.createTextNode(liveFixInFlight?'بيتكلم دلوقتي — Gemini بيصحّح...':'بيتكلم دلوقتي'));
+    if(!rec) label.appendChild(el_('span','fixing'));
+    label.appendChild(document.createTextNode(rec
+      ? (currentMode==='answer' ? '● سامع إجابتك' : '● بسجّل')
+      : 'بكتب كلامك من التسجيل...'));
     card.appendChild(label);
-    if(live.fixed) card.appendChild(el_('span','fixed',live.fixed+(live.raw?' ':'')));
-    if(live.raw) card.appendChild(el_('span','raw',live.raw));
+    card.appendChild(el_('span','raw', rec
+      ? 'صوتك بيتسجّل. اتكلم براحتك، والكلام هيظهر مكتوب ومتصحح بعد ما تخلص.'
+      : 'ثواني والكلام يظهر.'));
     box.appendChild(card);
   }
 
@@ -785,9 +792,8 @@ function createRecognition_(){
     render();
     scheduleRealSilence_();
 
-    if(currentMode==='call' && !phoneMode){
-      queueLiveCorrection_();
-    }
+    // V36.45: no live Gemini correction any more (it was most of the daily Gemini use),
+    // and the phone's live text is not shown (it was wrong and distracting).
   };
 
   r.onspeechstart=()=>{ if(r!==recognition) return;  if(!shouldKeepListening) return; speechActive=true; clearTimeout(silenceTimer); };
